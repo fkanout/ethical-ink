@@ -7,6 +7,7 @@
 
 bool setupSPIFFS();
 String readJsonFile();
-bool writeJsonFile(const String &jsonData);
+bool writeJsonFile(const String &filename, const String &jsonData);
+bool splitCalendarJson(const String &rawJsonPath);
 
 #endif  
