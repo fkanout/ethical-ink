@@ -7,7 +7,8 @@ WiFiManager::WiFiManager(const char* ssid, const char* password, const char* ntp
 void WiFiManager::connectWiFi() {
     Serial.println("⏳ Connecting to Wi-Fi...");
     WiFi.setAutoReconnect(true);  // Enable auto reconnect
-    WiFi.begin(_ssid, _password);
+    // delay(2000);
+    WiFi.begin(_ssid, _password, 0, NULL, true);  // Connect to the network
 
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 30) {  // Try for 30 seconds

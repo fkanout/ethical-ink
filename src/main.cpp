@@ -2,8 +2,9 @@
 #include "BLEManager.h"
 #include "SPIFFSHelper.h"
 #include "WiFiManager.h"
-
 #include <time.h>
+#include <CalendarManager.h>
+
 #define RAW_JSON_FILE "/data.json"
 
 
@@ -13,7 +14,10 @@ const char* PASSWORD = "%0$Vs1zffWAIno#e1*koMx3q3H!zE5zO";
 const char* NTP_SERVER = "pool.ntp.org";
 const long UTC_OFFSET = 3600;  // Adjust based on your timezon
 WiFiManager wifiManager(SSID, PASSWORD, NTP_SERVER, UTC_OFFSET);
+CalendarManager calendarManager;
 
+int currentMonth = 0;
+int currentDay = 0;
 void setInitialTime() {
     struct tm timeinfo = {};
     timeinfo.tm_year = 2025 - 1900;  // Year 2025
@@ -55,6 +59,31 @@ void setup() {
     }
 
     Serial.println("✅ Time synced, proceed with calendar fetch...");
+    struct tm timeinfo;  // Declare timeinfo as a struct tm object
+    if (getLocalTime(&timeinfo)) {
+        currentMonth = timeinfo.tm_mon + 1;  // tm_mon is 0-11, so we add 1 for correct month (1-12)
+        currentDay = timeinfo.tm_mday;    
+        Serial.println("📅 Current Date:");
+        Serial.printf("Month: %d, Day: %d\n", currentMonth, currentDay);
+        
+        calendarManager.fetchTodayData(currentMonth, currentDay);
+    } else {
+        Serial.println("❌ Failed to get time");
+
+    }
+
+   // Fetch today's data based on synced date
+//    DynamicJsonDocument todayData(1024);  // Declare a DynamicJsonDocument
+
+//    if (calendarManager.fetchTodayData(currentMonth, currentDay)) {  // Pass the document to the function
+//        // Extract JsonObject from the document
+//        JsonObject todayJson = todayData.as<JsonObject>();
+       
+//        Serial.println("✅ Today’s Data:");
+//        serializeJsonPretty(todayJson, Serial);  // Use the extracted JsonObject
+//    } else {
+//        Serial.println("⚠️ No data found for today.");
+//    }
 
 
 }
