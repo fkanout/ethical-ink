@@ -9,7 +9,14 @@
 struct TodayPrayerTimes
 {
     std::vector<String> prayerTimes;
+    std::vector<String> prayerTimesISODate;
     bool isLastDayOfMonth = false;
+};
+struct PrayerTimeInfo
+{
+    std::vector<String> prayerTimes;
+    std::vector<String> prayerTimesISODate;
+    String nextPrayerMinAndHour;
 };
 class CalendarManager
 {
@@ -17,7 +24,7 @@ public:
     CalendarManager();
     String getMonthFilePath(int month);
     TodayPrayerTimes fetchTodayPrayerTimes(int month, int day);
-    String getNextPrayerTimeForToday(int month, int day, int currentHour, int currentMinute, bool fetchTomorrow = false);
+    PrayerTimeInfo getNextPrayerTimeForToday(int month, int day, int currentHour, int currentMinute, bool fetchTomorrow = false);
 
 private:
     int currentMonth;

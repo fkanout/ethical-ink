@@ -5,6 +5,7 @@
 #include <time.h>
 #include <CalendarManager.h>
 #include <RTCManager.h>
+#include <iostream>
 
 #define RAW_JSON_FILE "/data.json"
 
@@ -43,8 +44,14 @@ void executeMainTask()
     int currentSecond = timeinfo.tm_sec;
     int currentMinute = timeinfo.tm_min;
     int currentHour = timeinfo.tm_hour;
-    String nextPrayer = calendarManager.getNextPrayerTimeForToday(currentMonth, currentDay, currentHour, currentMinute);
-    Serial.println("🔔 Next prayer is at: " + nextPrayer);
+    PrayerTimeInfo prayerTimeInfo = calendarManager.getNextPrayerTimeForToday(currentMonth, currentDay, currentHour, currentMinute);
+    Serial.println("🔔 Next prayer is at: " + prayerTimeInfo.nextPrayerMinAndHour);
+    for (size_t i = 0; i < prayerTimeInfo.prayerTimes.size(); ++i)
+    {
+      String prayerTime = prayerTimeInfo.prayerTimes[i];
+      String isoTime = prayerTimeInfo.prayerTimesISODate[i];
+      Serial.println("    ⏰ " + prayerTime);
+    }
     RTCManager *rtcManager = RTCManager::getInstance(); // Get the singleton instance
     rtcManager->setTimeToSpecificHourAndMinute(21, 37, 4, 30);
   }

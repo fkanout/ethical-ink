@@ -39,21 +39,27 @@ TodayPrayerTimes CalendarManager::fetchTodayPrayerTimes(int month, int day)
     if (dayDataCalendar[dayKey].is<JsonArray>())
     {
         JsonArray prayerTimes = dayDataCalendar[dayKey].as<JsonArray>();
-        for (const auto &time : prayerTimes)
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo)) // Assuming local time is available
         {
-            result.prayerTimes.push_back(time.as<String>());
+            int year = timeinfo.tm_year + 1900;                                      // Get the current year
+            String isoDate = String(year) + "-" + String(month) + "-" + String(day); // Format the date as YYYY-MM-DD
+            for (const auto &time : prayerTimes)
+            {
+                result.prayerTimes.push_back(time.as<String>());
+                String prayerTime = time.as<String>();
+                int hour = prayerTime.substring(0, 2).toInt();
+                int minute = prayerTime.substring(3, 5).toInt();
+                String timeZoneOffset = "+00:00";
+                String isoDateTime = isoDate + "T" + prayerTime + ":00" + timeZoneOffset; // Format as YYYY-MM-DDTHH:MM:SS+00:00                             // Assign the full ISO 8601 date and time
+                result.prayerTimesISODate.push_back(isoDateTime);                         // Add to the new vector
+            }
         }
-        // Check if the next day exists in the calendar
         String nextDayKey = String(day + 1);
         if (!dayDataCalendar[nextDayKey].is<JsonArray>())
         {
             result.isLastDayOfMonth = true; // This is the last day of the month if the next day doesn't exist
         }
-    }
-
-    for (const auto &time : result.prayerTimes)
-    {
-        Serial.println("    ⏰ " + time);
     }
 
     return result;
@@ -70,35 +76,43 @@ bool CalendarManager::isLaterThan(int hour, int minute, const String &timeStr)
     return false;
 }
 
-String CalendarManager::getNextPrayerTimeForToday(int month, int day, int currentHour, int currentMinute, bool fetchTomorrow)
+PrayerTimeInfo CalendarManager::getNextPrayerTimeForToday(int month, int day, int currentHour, int currentMinute, bool fetchTomorrow)
 {
     TodayPrayerTimes todayPrayerTime = fetchTodayPrayerTimes(month, day);
+    PrayerTimeInfo result;
+    result.prayerTimes = todayPrayerTime.prayerTimes;
+    result.prayerTimesISODate = todayPrayerTime.prayerTimesISODate; // Default to 0
+
     if (fetchTomorrow)
     {
-        Serial.println("🔄 Fetching tomorrow's prayer times");
-        return todayPrayerTime.prayerTimes[0]; // Return the first prayer time of the next day
+        result.nextPrayerMinAndHour = todayPrayerTime.prayerTimes[0];
+        return result;
     }
     for (const String &time : todayPrayerTime.prayerTimes)
     {
         if (isLaterThan(currentHour, currentMinute, time))
         {
-            return time; // Found the next prayer time
+            result.nextPrayerMinAndHour = time;
+            return result;
         }
     }
-    Serial.println("🌙 All prayers for today have passed.");
+
+    Serial.println("🌙 All prayers for today have passed - Fetch tomorrow ");
 
     if (todayPrayerTime.isLastDayOfMonth)
     {
-        Serial.println("🔄 fetch the next day's prayer times in the next month");
+        Serial.println("🔄 Next month");
         int nextMonth = (month % 12) + 1;
         int nextDay = 1;
         return getNextPrayerTimeForToday(nextMonth, nextDay, currentHour, currentMinute, true);
     }
     else
     {
-        Serial.println("🔄 Fetch the next day");
+        Serial.println("🔄 Next day");
         int nextMonth = month;
         int nextDay = day + 1;
         return getNextPrayerTimeForToday(nextMonth, nextDay, currentHour, currentMinute, true);
     }
+
+    return result;
 }
