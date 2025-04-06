@@ -12,6 +12,7 @@ unsigned long lastAttempt = 0;
 bool bleStarted = false;
 bool wifiAttempted = false;
 CalendarManager calendarManager;
+RTCManager *rtc = RTCManager::getInstance();
 
 void executeMainTask()
 {
@@ -59,7 +60,6 @@ void setup()
 
 void loop()
 {
-  RTCManager *rtc = RTCManager::getInstance();
 
   switch (state)
   {
@@ -105,6 +105,7 @@ void loop()
     {
       Serial.println("❌ Wi-Fi not connected. Retrying...");
       lastAttempt = millis();
+      WiFiManager::getInstance()->autoConnectFromFile();
     }
     break;
 
