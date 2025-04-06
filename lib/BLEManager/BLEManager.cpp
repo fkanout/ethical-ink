@@ -130,7 +130,6 @@ class MyServerCallbacks : public BLEServerCallbacks
         Serial.println("📴 Phone disconnected");
         isConnected = false;
         BLEDevice::startAdvertising();
-        // startBLETimeout(); // Restart timeout
     }
 };
 
@@ -220,7 +219,17 @@ bool BLEManager::isNewBLEDataAvailable()
 {
     return newDataAvailable;
 }
+void BLEManager::stopAdvertising()
+{
+    BLEDevice::stopAdvertising();
+    Serial.println("🔕 BLE advertising stopped");
+}
 
+void BLEManager::startAdvertising()
+{
+    BLEDevice::startAdvertising();
+    Serial.println("🔔 BLE advertising restarted");
+}
 String BLEManager::getReceivedBLEData()
 {
     newDataAvailable = false;

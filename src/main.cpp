@@ -36,7 +36,7 @@ void executeMainTask()
     Serial.println("    ⏰ " + prayer);
   }
 
-  int sleepDuration = 60 - currentSecond;
+  int sleepDuration = 59 - currentSecond;
   Serial.printf("💤 Sleeping for %d seconds to align with full minute...\n", sleepDuration);
   esp_sleep_enable_timer_wakeup(sleepDuration * 1000000ULL);
   esp_deep_sleep_start();
@@ -45,10 +45,12 @@ void executeMainTask()
 void setup()
 {
   Serial.begin(115200);
-  setCpuFrequencyMhz(80); // Lower CPU clock to 80 MHz
+  esp_log_level_set("wifi", ESP_LOG_DEBUG);
+  // setCpuFrequencyMhz(80); // Lower CPU clock to 80 MHz
   Serial.printf("CPU Frequency: %d MHz\n", getCpuFrequencyMhz());
-
   setupSPIFFS();
+
+  // deleteFile("/wifi.json");
   BLEManager::setupBLE();
   RTCManager::getInstance(); // Prepare RTC
   setenv("TZ", "CET-1", 1);  // Constant UTC+1, no DST
@@ -76,6 +78,8 @@ void loop()
     else
     {
       Serial.println("❌ Time not synced — enabling Wi-Fi.");
+      BLEManager::stopAdvertising();
+      Serial.println("🔕 BLE advertising stopped");
       WiFiManager::getInstance()->autoConnectFromFile();
       wifiAttempted = true;
       state = CONNECTING_WIFI;
@@ -93,6 +97,8 @@ void loop()
     if (WiFi.status() == WL_CONNECTED)
     {
       Serial.println("📡 Wi-Fi connected.");
+      BLEManager::startAdvertising();
+      Serial.println("🔔 BLE advertising started");
       state = WAITING_FOR_TIME_SYNC;
     }
     else if (millis() - lastAttempt > 10000)

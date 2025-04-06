@@ -10,6 +10,8 @@ public:
     static String getReceivedBLEData();
     static void restartBLE();
     static void sendBLEData(const String &data);
+    static void stopAdvertising();
+    static void startAdvertising();
 
 private:
     static void startBLETimeout();

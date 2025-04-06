@@ -1,46 +1,67 @@
-#ifndef WIFI_MANAGER_H
-#define WIFI_MANAGER_H
-
+#pragma once
+#include <Arduino.h>
 #include <WiFi.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-#include <time.h>
+#include <ArduinoJson.h>
+#include "SPIFFSHelper.h"
 
 class WiFiManager
 {
 public:
     static WiFiManager *getInstance();
 
+    // Set configuration (does not start connection)
     void begin(const char *ssid, const char *password, const char *ntpServer, long utcOffset);
-    void connectWiFi();
-    void scanWifiNetworks();
-    void syncTime();
-    void updateRTC(time_t epochTime);
-    void printCurrentTime();
-    bool isTimeSynced() const;
-    void connectAsync(const String &json);
-    void deferAsyncConnect(const String &json);
-    static void connectTask(void *param);
+
+    // Initiates connection using stored credentials.
     void connectNow();
-    void scheduleRetry(uint32_t delayMs);
-    void updateNTPServer(const String &ntpServer);
-    static void handleWiFiEvent(WiFiEvent_t event);
-    static void retryTask(void *param);
+
+    // Parses JSON from BLE and starts connection.
+    void connectAsync(const String &json);
+
+    // Loads credentials from SPIFFS and initiates connection.
     void autoConnectFromFile();
 
-private:
-    WiFiManager() = default;
-    int retryCount = 0;
+    // Called from BLE tasks (non-blocking).
+    void deferAsyncConnect(const String &json);
+
+    // Initiates a Wi-Fi scan and sends the list over BLE.
+    void scanWifiNetworks();
+
+    // Synchronize time using NTP.
+    void syncTime();
+    void printCurrentTime();
+
+    bool isTimeSynced() const { return timeSynced; }
+
+    // Retry connection logic.
+    void retryConnection();
+
+    // Static Wi-Fi event handler.
+    static void handleWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);
+    // Static task function for periodic retry.
+    static void retryTask(void *param);
+    static void connectTask(void *param);
+    void syncTimeWithTimeout(uint32_t timeoutMs, int maxRetries);
+
     const int maxRetries = 3;
-    bool isConnecting = false; // prevent duplicate attempts
-    // ✅ Use String (manages memory safely)
+
+private:
+    WiFiManager();
+
+    // Stored configuration.
     String _ssid;
     String _password;
     String _ntpServer;
     long _utcOffset = 0;
 
     WiFiUDP _udp;
-    NTPClient _timeClient = NTPClient(_udp); // still fine here
+    NTPClient _timeClient; // Initialized in begin()
     bool timeSynced = false;
+
+    // Retry state.
+    int retryCount = 0;
+    bool isConnecting = false;
+    bool retryTaskRunning = false;
 };
-#endif // WIFI_MANAGER_H

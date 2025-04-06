@@ -1,15 +1,17 @@
 #include "WiFiManager.h"
-#include <BLEManager.h>
-#include "SPIFFSHelper.h"
-#include <ArduinoJson.h>
+#include "BLEManager.h" // For sending BLE notifications
 #include <RTCManager.h>
 
-// Singleton instance getter
+// Singleton instance getter.
 WiFiManager *WiFiManager::getInstance()
 {
     static WiFiManager instance;
     return &instance;
 }
+
+WiFiManager::WiFiManager() : _timeClient(_udp) {}
+
+// Stores configuration without initiating connection.
 void WiFiManager::begin(const char *ssid, const char *password, const char *ntpServer, long utcOffset)
 {
     Serial.println("📦 WiFiManager.begin() called");
@@ -18,108 +20,39 @@ void WiFiManager::begin(const char *ssid, const char *password, const char *ntpS
     _password = String(password);
     _ntpServer = String(ntpServer);
     _utcOffset = utcOffset;
-
     _timeClient = NTPClient(_udp, _ntpServer.c_str(), _utcOffset);
 }
 
-void WiFiManager::deferAsyncConnect(const String &json)
-{
-    // Pass the String via heap
-    String *data = new String(json);
-    xTaskCreatePinnedToCore(
-        WiFiManager::connectTask,
-        "wifi_task",
-        12288,
-        data,
-        1,
-        NULL,
-        1);
-}
-void WiFiManager::handleWiFiEvent(WiFiEvent_t event)
-{
-    switch (event)
-    {
-    case SYSTEM_EVENT_STA_CONNECTED:
-        Serial.println("📶 Wi-Fi connected to AP");
-        break;
-    case SYSTEM_EVENT_STA_GOT_IP:
-        Serial.println("📡 Got IP");
-        Serial.println(WiFi.localIP());
-        WiFiManager::getInstance()->syncTime();
-        BLEManager::sendBLEData("{\"wifiStatus\":\"connected\"}");
-        break;
-    case SYSTEM_EVENT_STA_DISCONNECTED:
-        Serial.println("❌ Wi-Fi disconnected");
-        BLEManager::sendBLEData("{\"wifiStatus\":\"disconnected\"}");
-        break;
-    default:
-        break;
-    }
-}
-
-void WiFiManager::connectTask(void *param)
-{
-    String *jsonPtr = static_cast<String *>(param);
-    String json = *jsonPtr;
-    delete jsonPtr; // Free heap
-
-    WiFiManager::getInstance()->connectAsync(json);
-    vTaskDelete(NULL); // Clean up task
-}
-void WiFiManager::scheduleRetry(uint32_t delayMs)
-{
-    // Pass delay as pointer
-    uint32_t *delayCopy = new uint32_t(delayMs);
-
-    xTaskCreatePinnedToCore(
-        WiFiManager::retryTask,
-        "wifi_retry",
-        4096,
-        delayCopy,
-        1,
-        NULL,
-        1);
-}
-
-void WiFiManager::retryTask(void *param)
-{
-    uint32_t delayMs = *(uint32_t *)param;
-    delete (uint32_t *)param;
-
-    vTaskDelay(delayMs / portTICK_PERIOD_MS);
-    WiFiManager::getInstance()->connectNow();
-    vTaskDelete(NULL);
-}
+// Initiates connection using stored credentials.
 void WiFiManager::connectNow()
 {
     retryCount = 0;
     isConnecting = true;
-
     Serial.printf("🔁 Connecting to Wi-Fi (attempt %d/%d)...\n", retryCount + 1, maxRetries);
-
     WiFi.disconnect(true);
     delay(100);
-
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
     WiFi.begin(_ssid.c_str(), _password.c_str());
 
+    // Register event handler once.
     static bool eventHooked = false;
     if (!eventHooked)
     {
-        WiFi.onEvent(WiFiManager::handleWiFiEvent); // Register WiFi event handler
+        WiFi.onEvent(WiFiManager::handleWiFiEvent);
         eventHooked = true;
     }
 }
 
+// Called by the BLE task context to parse JSON and connect.
 void WiFiManager::connectAsync(const String &json)
 {
     Serial.println("⚙️ connectAsync running");
     Serial.println("📨 JSON: " + json);
 
     DynamicJsonDocument doc(256);
-    DeserializationError error = deserializeJson(doc, json);
-    if (error)
+    DeserializationError err = deserializeJson(doc, json);
+    if (err)
     {
         Serial.println("❌ JSON parse failed");
         return;
@@ -127,28 +60,54 @@ void WiFiManager::connectAsync(const String &json)
 
     String ssid = doc["ssid"].as<String>();
     String password = doc["password"].as<String>();
-    writeJsonFile("/wifi.json", json);
+    ssid.trim();
+    password.trim();
+
+    // Save cleaned credentials to SPIFFS.
+    DynamicJsonDocument outDoc(256);
+    outDoc["ssid"] = ssid;
+    outDoc["password"] = password;
+    String cleanedJson;
+    serializeJson(outDoc, cleanedJson);
+    writeJsonFile("/wifi.json", cleanedJson);
     Serial.println("💾 Credentials saved to /wifi.json");
+
+    // Update configuration and connect.
     begin(ssid.c_str(), password.c_str(), "pool.ntp.org", 3600);
     connectNow();
-
     Serial.printf("📦 Free heap: %u bytes\n", ESP.getFreeHeap());
 }
 
+// Called from BLE tasks to offload processing.
+void WiFiManager::deferAsyncConnect(const String &json)
+{
+    String *data = new String(json);
+    xTaskCreatePinnedToCore(connectTask, "wifi_task", 12288, data, 1, NULL, 1);
+}
+
+// Task to process BLE-provided JSON (non-blocking).
+void WiFiManager::connectTask(void *param)
+{
+    String *jsonPtr = static_cast<String *>(param);
+    String json = *jsonPtr;
+    delete jsonPtr;
+    WiFiManager::getInstance()->connectAsync(json);
+    vTaskDelete(NULL);
+}
+
+// Loads stored credentials from SPIFFS and initiates connection.
 void WiFiManager::autoConnectFromFile()
 {
     Serial.println("📂 Attempting to load Wi-Fi credentials from /wifi.json");
-
     String json = readJsonFile("/wifi.json");
     if (json.isEmpty() || json == "{}")
     {
         Serial.println("⚠️ No valid Wi-Fi credentials found.");
         return;
     }
-
     DynamicJsonDocument doc(256);
-    DeserializationError error = deserializeJson(doc, json);
-    if (error)
+    DeserializationError err = deserializeJson(doc, json);
+    if (err)
     {
         Serial.println("❌ Failed to parse /wifi.json");
         return;
@@ -156,6 +115,8 @@ void WiFiManager::autoConnectFromFile()
 
     String ssid = doc["ssid"].as<String>();
     String password = doc["password"].as<String>();
+    ssid.trim();
+    password.trim();
 
     if (ssid.isEmpty() || password.isEmpty())
     {
@@ -170,47 +131,18 @@ void WiFiManager::autoConnectFromFile()
     begin(ssid.c_str(), password.c_str(), "pool.ntp.org", 3600);
     connectNow();
 }
-void WiFiManager::connectWiFi()
-{
-    Serial.println("⏳ Connecting to Wi-Fi...");
-    WiFi.setAutoReconnect(true);
-    WiFi.begin(_ssid, _password, 0, NULL, true);
 
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 30)
-    {
-        delay(2000);
-        Serial.print(".");
-        attempts++;
-    }
-
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        Serial.println("✅ Connected to WiFi!");
-        Serial.print("IP Address: ");
-        Serial.println(WiFi.localIP());
-        syncTime();
-        printCurrentTime();
-    }
-    else
-    {
-        Serial.println("❌ Failed to connect to WiFi");
-    }
-}
-
+// Scans for available networks and sends the list over BLE.
 void WiFiManager::scanWifiNetworks()
 {
     Serial.println("🔍 Starting WiFi scan...");
-
     WiFi.mode(WIFI_STA);
     int numNetworks = WiFi.scanNetworks();
-
     if (numNetworks == WIFI_SCAN_FAILED)
     {
         Serial.println("❌ Scan failed. Try again.");
         return;
     }
-
     if (numNetworks == 0)
     {
         Serial.println("❌ No networks found.");
@@ -219,47 +151,62 @@ void WiFiManager::scanWifiNetworks()
     }
 
     Serial.printf("✅ %d networks found:\n", numNetworks);
-
     String json = "[";
     for (int i = 0; i < numNetworks; i++)
     {
-        String ssid = WiFi.SSID(i);
+        String netSSID = WiFi.SSID(i);
         int rssi = WiFi.RSSI(i);
         bool secured = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
-
-        Serial.printf("%d: %s (Signal: %d dBm, Encryption: %s)\n",
-                      i + 1, ssid.c_str(), rssi, secured ? "Secured" : "Open");
-
         json += "{";
-        json += "\"ssid\":\"" + ssid + "\",";
+        json += "\"ssid\":\"" + netSSID + "\",";
         json += "\"rssi\":" + String(rssi) + ",";
         json += "\"secured\":" + String(secured ? "true" : "false");
         json += "}";
-
         if (i < numNetworks - 1)
             json += ",";
     }
     json += "]";
-
     BLEManager::sendBLEData(json);
     WiFi.scanDelete();
 }
 
-void WiFiManager::syncTime()
+void WiFiManager::syncTimeWithTimeout(uint32_t timeoutMs, int maxRetries)
 {
     Serial.println("⏳ Fetching time from NTP server...");
-    _timeClient.begin();
+    _timeClient.begin(); // Initialize the NTP client
+    uint32_t startTime = millis();
+    int retries = 0;
 
+    // Attempt to update until the client successfully updates or we time out.
     while (!_timeClient.update())
     {
-        _timeClient.forceUpdate();
+        // Check if the current attempt has exceeded the timeout.
+        if (millis() - startTime > timeoutMs)
+        {
+            if (retries < maxRetries)
+            {
+                retries++;
+                Serial.printf("⏳ NTP sync timeout, retrying (%d/%d)...\n", retries, maxRetries);
+                // Reset timer for the next attempt.
+                startTime = millis();
+            }
+            else
+            {
+                Serial.println("❌ NTP sync timed out after maximum retries.");
+            }
+        }
+        _timeClient.forceUpdate(); // Force update (blocking call)
+        delay(500);                // Short delay between retries to avoid overwhelming the NTP server
     }
 
+    // When successful, update the RTC with the fetched time.
     time_t epochTime = _timeClient.getEpochTime();
     RTCManager::getInstance()->updateRTC(epochTime);
-    Serial.println("✅ Time fetched from NTP server: " + _timeClient.getFormattedTime());
+    timeSynced = true;
+    Serial.println("✅ Time fetched from NTP: " + _timeClient.getFormattedTime());
 }
 
+// Prints the current system time.
 void WiFiManager::printCurrentTime()
 {
     struct tm timeinfo;
@@ -276,7 +223,80 @@ void WiFiManager::printCurrentTime()
     }
 }
 
-bool WiFiManager::isTimeSynced() const
+// Retry connection if disconnected.
+void WiFiManager::retryConnection()
 {
-    return timeSynced;
+    if (retryCount < maxRetries)
+    {
+        retryCount++;
+        Serial.printf("🔁 Retrying Wi-Fi connection (attempt %d/%d)...\n", retryCount + 1, maxRetries);
+        WiFi.disconnect(true);
+        delay(100);
+        WiFi.begin(_ssid.c_str(), _password.c_str());
+    }
+    else
+    {
+        isConnecting = false;
+        Serial.println("🛑 Max Wi-Fi retries reached.");
+        BLEManager::sendBLEData("{\"wifiStatus\":\"failed\"}");
+    }
+}
+
+// Static Wi-Fi event handler.
+void WiFiManager::handleWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info)
+{
+    {
+        WiFiManager *wm = WiFiManager::getInstance();
+        switch (event)
+        {
+        case SYSTEM_EVENT_STA_CONNECTED:
+            Serial.println("📶 Wi-Fi connected to AP");
+            break;
+        case SYSTEM_EVENT_STA_GOT_IP:
+            Serial.println("📡 Got IP");
+            Serial.println(WiFi.localIP());
+            wm->syncTimeWithTimeout(10000, 5); // Sync time with timeout
+            // Save working credentials.
+            {
+                String json = "{\"ssid\":\"" + wm->_ssid + "\",\"password\":\"" + wm->_password + "\"}";
+                writeJsonFile("/wifi.json", json);
+                Serial.println("💾 Credentials saved to /wifi.json");
+            }
+            BLEManager::sendBLEData("{\"wifiStatus\":\"connected\"}");
+            break;
+        case SYSTEM_EVENT_STA_DISCONNECTED:
+            Serial.println("❌ Wi-Fi disconnected");
+            Serial.printf("🔄 Disconnection reason: %d\n", info.wifi_sta_disconnected.reason);
+
+            if (info.wifi_sta_disconnected.reason == WIFI_REASON_AUTH_EXPIRE)
+            {
+                Serial.println("🔄 AUTH_EXPIRE received — forcing reauthentication...");
+                WiFi.disconnect(true);
+                delay(100);
+                if (!wm->retryTaskRunning)
+                {
+                    wm->retryTaskRunning = true;
+                    xTaskCreatePinnedToCore(WiFiManager::retryTask, "wifi_retry", 4096, NULL, 1, NULL, 1);
+                }
+            }
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+// Static retry task function (Option B).
+void WiFiManager::retryTask(void *param)
+{
+    WiFiManager *wm = WiFiManager::getInstance();
+    // Loop and check Wi-Fi status every 10 seconds.
+    while (wm->isConnecting && WiFi.status() != WL_CONNECTED && wm->retryCount < wm->maxRetries)
+    {
+        Serial.println("🔁 Periodic retry task running...");
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+        wm->retryConnection();
+    }
+    wm->retryTaskRunning = false; // Reset flag when done.
+    vTaskDelete(NULL);
 }
