@@ -11,7 +11,7 @@ RTCManager *RTCManager::getInstance()
     return instance;
 }
 
-bool timeSynced = false;                              // Flag to indicate if time is synced
+RTC_DATA_ATTR bool RTCManager::timeSynced = false;    // Flag to indicate if time is synced
 RTC_DATA_ATTR bool RTCManager::manualTimeSet = false; // Define static variable with RTC_DATA_ATTR
 void RTCManager::setRtcTimeFromISO8601(const String &iso8601Time)
 {
@@ -23,6 +23,10 @@ void RTCManager::setRtcTimeFromISO8601(const String &iso8601Time)
         settimeofday(&tv, NULL);    // Set the ESP32 RTC
         Serial.println("✅ ESP32 RTC Updated!");
         timeSynced = true; // Set the flag to indicate time is synced
+    }
+    else
+    {
+        Serial.println("❌ Failed to parse ISO 8601 time string.");
     }
 }
 void RTCManager::printTime()
@@ -42,7 +46,13 @@ bool RTCManager::isTimeSynced()
 {
     return timeSynced;
 }
-
+void RTCManager::updateRTC(time_t epochTime)
+{
+    struct timeval now = {epochTime, 0};
+    settimeofday(&now, nullptr);
+    timeSynced = true;
+    Serial.println("✅ RTC updated with epoch time");
+}
 void RTCManager::setTimeToSpecificHourAndMinute(int newHour, int newMinute, int newMonth, int newDay)
 {
     if (manualTimeSet)

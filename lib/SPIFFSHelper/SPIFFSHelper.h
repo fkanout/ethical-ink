@@ -3,11 +3,11 @@
 
 #include <Arduino.h>
 #include <FS.h>
-#include <SPIFFS.h>  // Use LittleFS if configured
+#include <SPIFFS.h> // Use LittleFS if configured
 
 bool setupSPIFFS();
-String readJsonFile();
+String readJsonFile(const String &jsonPath);
 bool writeJsonFile(const String &filename, const String &jsonData);
 bool splitCalendarJson(const String &rawJsonPath);
 
-#endif  
+#endif

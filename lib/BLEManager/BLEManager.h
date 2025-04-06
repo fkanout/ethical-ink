@@ -1,9 +1,18 @@
 #ifndef BLE_MANAGER_H
 #define BLE_MANAGER_H
-
 #include <Arduino.h>
 
-void setupBLE();
-bool isNewBLEDataAvailable(); // Declare it here!
-String getReceivedBLEData();
+class BLEManager
+{
+public:
+    static void setupBLE();
+    static bool isNewBLEDataAvailable();
+    static String getReceivedBLEData();
+    static void restartBLE();
+    static void sendBLEData(const String &data);
+
+private:
+    static void startBLETimeout();
+};
+
 #endif // BLE_MANAGER_H
