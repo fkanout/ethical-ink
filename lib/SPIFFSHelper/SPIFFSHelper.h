@@ -9,5 +9,5 @@ bool setupSPIFFS();
 String readJsonFile(const String &jsonPath);
 bool writeJsonFile(const String &filename, const String &jsonData);
 bool splitCalendarJson(const String &rawJsonPath);
-
+void deleteFile(const char *path);
 #endif

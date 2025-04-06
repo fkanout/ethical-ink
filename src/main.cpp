@@ -45,7 +45,8 @@ void executeMainTask()
 void setup()
 {
   Serial.begin(115200);
-  delay(500);
+  setCpuFrequencyMhz(80); // Lower CPU clock to 80 MHz
+  Serial.printf("CPU Frequency: %d MHz\n", getCpuFrequencyMhz());
 
   setupSPIFFS();
   BLEManager::setupBLE();
@@ -83,6 +84,12 @@ void loop()
     break;
 
   case CONNECTING_WIFI:
+    if (!bleStarted)
+    {
+      BLEManager::restartBLE();
+      Serial.println("📲 BLE advertising restarted");
+      bleStarted = true;
+    }
     if (WiFi.status() == WL_CONNECTED)
     {
       Serial.println("📡 Wi-Fi connected.");
@@ -92,13 +99,6 @@ void loop()
     {
       Serial.println("❌ Wi-Fi not connected. Retrying...");
       lastAttempt = millis();
-
-      if (!bleStarted)
-      {
-        BLEManager::restartBLE();
-        Serial.println("📲 BLE advertising restarted");
-        bleStarted = true;
-      }
     }
     break;
 
