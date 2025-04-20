@@ -8,6 +8,6 @@
 bool setupSPIFFS();
 String readJsonFile(const String &jsonPath);
 bool writeJsonFile(const String &filename, const String &jsonData);
-bool splitCalendarJson(const String &rawJsonPath);
+bool splitCalendarJson(const String &rawJsonPath, const bool &isIqama = false);
 void deleteFile(const char *path);
 #endif

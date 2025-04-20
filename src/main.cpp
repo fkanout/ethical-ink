@@ -1,24 +1,62 @@
-#include <Arduino.h>
-#include "BLEManager.h"
+
+
 #include "SPIFFSHelper.h"
 #include "WiFiManager.h"
+#include <AppState.h>
+#include <Arduino.h>
+#include <ArduinoJson.h>
+#include <BLEManager.h>
 #include <CalendarManager.h>
 #include <RTCManager.h>
-#include <AppState.h>
-#define RAW_JSON_FILE "/data.json"
 
-AppState state = BOOTING;
-unsigned long lastAttempt = 0;
-bool bleStarted = false;
-bool wifiAttempted = false;
 CalendarManager calendarManager;
-RTCManager *rtc = RTCManager::getInstance();
 
-void executeMainTask()
-{
+bool bootstrap() {
+  if (!SPIFFS.begin(true)) {
+    Serial.println("❌ Failed to mount SPIFFS");
+    return false;
+  }
+  Serial.println("✅ SPIFFS mounted successfully");
+  Serial.println("✅ Bootstrap successful");
+  return true;
+}
+
+Countdown calculateCountdownToNextPrayer(const String &nextPrayer,
+                                         const struct tm &now) {
+  int currentSeconds = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec;
+
+  int prayerHour = nextPrayer.substring(0, 2).toInt();
+  int prayerMin = nextPrayer.substring(3, 5).toInt();
+  int prayerSeconds = prayerHour * 3600 + prayerMin * 60;
+
+  int diffSeconds = prayerSeconds - currentSeconds;
+  if (diffSeconds < 0) {
+    diffSeconds += 24 * 3600; // Next day
+  }
+
+  // ✅ UX Adjustment: subtract a full minute if we're *exactly* on a new minute
+  // (because display won't update until a minute later)
+  if (now.tm_sec == 0) {
+    diffSeconds -= 60;
+  }
+
+  // Prevent negative values (in case diff was exactly 0)
+  if (diffSeconds < 0) {
+    diffSeconds = 0;
+  }
+
+  Countdown result;
+  result.hours = diffSeconds / 3600;
+  result.minutes = (diffSeconds % 3600) / 60;
+  return result;
+}
+
+void executeMainTask() {
+  setCpuFrequencyMhz(80);
+  Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
+
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
-  {
+  if (!getLocalTime(&timeinfo)) {
     Serial.println("❌ Failed to get time.");
     return;
   }
@@ -27,104 +65,150 @@ void executeMainTask()
   PrayerTimeInfo prayerTimeInfo = calendarManager.getNextPrayerTimeForToday(
       timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min);
 
-  Serial.printf("🕒 %02d:%02d:%02d  📅 %02d/%02d/%04d\n",
-                timeinfo.tm_hour, timeinfo.tm_min, currentSecond,
-                timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+  Serial.printf("🕒 %02d:%02d:%02d  📅 %02d/%02d/%04d\n", timeinfo.tm_hour,
+                timeinfo.tm_min, currentSecond, timeinfo.tm_mday,
+                timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
 
-  Serial.println("🔔 Next prayer: " + prayerTimeInfo.nextPrayerMinAndHour);
-  for (const String &prayer : prayerTimeInfo.prayerTimes)
-  {
-    Serial.println("    ⏰ " + prayer);
+  if (prayerTimeInfo.prayerTimes.empty() || prayerTimeInfo.iqamaTimes.empty() ||
+      prayerTimeInfo.prayerTimes.size() < 6) {
+    Serial.println("🐞 Issue with prayer times.");
+    return;
   }
 
-  int sleepDuration = 59 - currentSecond;
-  Serial.printf("💤 Sleeping for %d seconds to align with full minute...\n", sleepDuration);
+  Countdown countdown = calculateCountdownToNextPrayer(
+      prayerTimeInfo.nextPrayerMinAndHour, timeinfo);
+
+  String sunrise = prayerTimeInfo.prayerTimes[1];
+  prayerTimeInfo.prayerTimes.erase(prayerTimeInfo.prayerTimes.begin() + 1);
+
+  Serial.println("---------------------------");
+  for (size_t i = 0; i < prayerTimeInfo.prayerTimes.size(); ++i) {
+    const String &prayer = prayerTimeInfo.prayerTimes[i];
+    const String &iqama = prayerTimeInfo.iqamaTimes[i];
+    Serial.printf("  ⏰ %s  %s\n", prayer.c_str(), iqama.c_str());
+  }
+  Serial.printf("⏳ Next prayer in %02d:%02d\n", countdown.hours,
+                countdown.minutes);
+  Serial.println("🔔 Next prayer: " + prayerTimeInfo.nextPrayerMinAndHour);
+  Serial.println("🌅 Sunrise: " + sunrise);
+  Serial.println("---------------------------");
+
+  int sleepDuration = 60 - currentSecond;
+  Serial.printf("💤 Sleeping for %d seconds to align with full minute...\n",
+                sleepDuration);
   esp_sleep_enable_timer_wakeup(sleepDuration * 1000000ULL);
   esp_deep_sleep_start();
 }
 
-void setup()
-{
-  Serial.begin(115200);
-  esp_log_level_set("wifi", ESP_LOG_DEBUG);
-  // setCpuFrequencyMhz(80); // Lower CPU clock to 80 MHz
-  Serial.printf("CPU Frequency: %d MHz\n", getCpuFrequencyMhz());
-  setupSPIFFS();
+void onWifiNetworksFound(const std::vector<ScanResult> &results) {
+  Serial.println("📋 Wi-Fi networks:");
+  String json = "[";
+  for (size_t i = 0; i < results.size(); ++i) {
+    const auto &net = results[i];
+    String displaySSID = net.ssid.substring(0, 25);
+    const char *security = net.secured ? "secured" : "open";
 
-  // deleteFile("/wifi.json");
-  BLEManager::setupBLE();
-  RTCManager::getInstance(); // Prepare RTC
-  setenv("TZ", "CET-1", 1);  // Constant UTC+1, no DST
-  tzset();
+    // ✅ Print nicely formatted output
+    Serial.printf("   📶 %-25s %5ddBm  %s\n", displaySSID.c_str(), net.rssi,
+                  security);
+
+    // ✅ Add to JSON
+    json += "{";
+    json += "\"ssid\":\"" + displaySSID + "\",";
+    json += "\"rssi\":" + String(net.rssi) + ",";
+    json += "\"secured\":" + String(net.secured ? "true" : "false");
+    json += "}";
+
+    if (i < results.size() - 1) {
+      json += ",";
+    }
+  }
+  json += "]";
+
+  // ✅ Send it over BLE
+  BLEManager::getInstance().sendBLEData(json);
 }
+void onBLENotificationEnabled() {
+  Serial.println("🔔 BLE notification enabled — main.cpp was notified!");
+  WiFiManager &wifi = WiFiManager::getInstance();
+  wifi.asyncScanNetworks(onWifiNetworksFound);
+}
+void onWiFiConnected(bool success) {
+  if (success) {
+    Serial.println("🎉 Wi‑Fi connected — syncing time...");
 
-void loop()
-{
-
-  switch (state)
-  {
-  case BOOTING:
-    Serial.println("🚀 Booting...");
-    state = CHECKING_TIME;
-    break;
-
-  case CHECKING_TIME:
-    struct tm timeinfo;
-    if (getLocalTime(&timeinfo) && rtc->isTimeSynced())
-    {
-      Serial.println("✅ Time already synced — skipping Wi-Fi.");
-      state = RUNNING_MAIN_TASK;
+    RTCManager &rtc = RTCManager::getInstance();
+    bool timeIsSynced = rtc.syncTimeFromNTPWithOffset(3, 10000);
+    if (timeIsSynced) {
+      Serial.println("✅ Time synced successfully");
+    } else {
+      Serial.println("❌ Failed to sync time");
     }
-    else
-    {
-      Serial.println("❌ Time not synced — enabling Wi-Fi.");
-      BLEManager::stopAdvertising();
-      Serial.println("🔕 BLE advertising stopped");
-      WiFiManager::getInstance()->autoConnectFromFile();
-      wifiAttempted = true;
-      state = CONNECTING_WIFI;
-      lastAttempt = millis();
-    }
-    break;
-
-  case CONNECTING_WIFI:
-    if (!bleStarted)
-    {
-      BLEManager::restartBLE();
-      Serial.println("📲 BLE advertising restarted");
-      bleStarted = true;
-    }
-    if (WiFi.status() == WL_CONNECTED)
-    {
-      Serial.println("📡 Wi-Fi connected.");
-      BLEManager::startAdvertising();
-      Serial.println("🔔 BLE advertising started");
-      state = WAITING_FOR_TIME_SYNC;
-    }
-    else if (millis() - lastAttempt > 10000)
-    {
-      Serial.println("❌ Wi-Fi not connected. Retrying...");
-      lastAttempt = millis();
-      WiFiManager::getInstance()->autoConnectFromFile();
-    }
-    break;
-
-  case WAITING_FOR_TIME_SYNC:
-    if (rtc->isTimeSynced())
-    {
-      Serial.println("✅ Time synced via Wi-Fi.");
-      state = RUNNING_MAIN_TASK;
-    }
-    break;
-
-  case RUNNING_MAIN_TASK:
+    RTCManager::getInstance().printTime();
     executeMainTask();
-    state = SLEEPING;
-    break;
+  } else {
+    Serial.println("😓 Failed to connect to Wi‑Fi.");
+  }
+}
+void onJsonReceivedCallback(const String &json) {
+  Serial.println("📩 Received JSON over BLE: " + json);
+  WiFiManager &wifi = WiFiManager::getInstance();
 
-  case SLEEPING:
-    break; // Will never reach here; device goes to deep sleep
+  StaticJsonDocument<256> doc;
+  DeserializationError err = deserializeJson(doc, json);
+  if (err) {
+    Serial.println("❌ Invalid JSON format");
+    return;
   }
 
-  delay(200);
+  if (doc.containsKey("ssid")) {
+    String ssid = doc["ssid"];
+    String password = doc["password"];
+    wifi.asyncConnect(ssid.c_str(), password.c_str(), onWiFiConnected);
+  }
 }
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  if (!bootstrap()) {
+    Serial.println("❌ Bootstrap failed");
+    return;
+  }
+
+  // splitCalendarJson(MOSQUE_FILE, true);
+
+  RTCManager &rtc = RTCManager::getInstance();
+  if (!rtc.isTimeSynced()) {
+    Serial.println("❌ Time not synced");
+    WiFiManager &wifi = WiFiManager::getInstance();
+    String wifiJsonString = readJsonFile(WIFI_CRED_FILE);
+    if (wifiJsonString.isEmpty() || wifiJsonString == "{}") {
+      Serial.println("⚠️ No valid Wi-Fi credentials found.");
+      BLEManager &ble = BLEManager::getInstance();
+      ble.setupBLE();
+      ble.startAdvertising();
+      ble.setNotificationEnabledCallback(onBLENotificationEnabled);
+      ble.setJsonReceivedCallback(onJsonReceivedCallback);
+      return;
+    }
+    DynamicJsonDocument doc(256);
+    DeserializationError errorParsingWifi =
+        deserializeJson(doc, wifiJsonString);
+    if (errorParsingWifi) {
+      Serial.println("❌ JSON parse failed");
+      wifi.asyncScanNetworks();
+      return;
+    } else {
+      String ssid = doc["ssid"].as<String>();
+      String password = doc["password"].as<String>();
+      Serial.println("📂 Read JSON: " + wifiJsonString);
+      wifi.asyncConnect(ssid.c_str(), password.c_str(), onWiFiConnected);
+      return;
+    }
+  }
+
+  executeMainTask();
+}
+
+void loop() { vTaskDelay(1000 / portTICK_PERIOD_MS); }
