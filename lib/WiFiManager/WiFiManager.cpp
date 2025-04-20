@@ -120,6 +120,10 @@ void WiFiManager::connectTask(void *parameter) {
       Serial.print("📡 IP Address: ");
       Serial.println(WiFi.localIP());
       connected = true;
+      String json = "{\"ssid\":\"" + String(params->ssid) +
+                    "\",\"password\":\"" + String(params->password) + "\"}";
+      writeJsonFile(WIFI_CRED_FILE, json);
+      Serial.printf("💾 Wifi Credentials saved to %s\n", WIFI_CRED_FILE);
       break;
     } else {
       Serial.println("❌ Connection attempt failed. Retrying...");
@@ -131,11 +135,6 @@ void WiFiManager::connectTask(void *parameter) {
     Serial.println("❌ Failed to connect after all retries.");
     WiFi.disconnect();
   }
-
-  String json = "{\"ssid\":\"" + String(params->ssid) + "\",\"password\":\"" +
-                String(params->password) + "\"}";
-  writeJsonFile(WIFI_CRED_FILE, json);
-  Serial.printf("💾 Wifi Credentials saved to %s\n", WIFI_CRED_FILE);
 
   if (params->callback) {
     params->callback(connected);
