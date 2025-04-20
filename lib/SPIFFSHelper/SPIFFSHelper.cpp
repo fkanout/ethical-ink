@@ -103,7 +103,7 @@ bool splitCalendarJson(const String &rawJsonPath, const bool &isIqama) {
       String filename = fileName + String(month + 1) + ".json";
       if (writeJsonFile(filename, monthJson)) {
         Serial.printf("✅ Saved: %s\n", filename.c_str());
-        Serial.println(monthJson);
+        // Serial.println(monthJson);
       } else {
         Serial.printf("❌ Failed to save: %s\n", filename.c_str());
         return false;

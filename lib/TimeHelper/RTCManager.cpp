@@ -25,7 +25,16 @@ void RTCManager::setRtcTimeFromISO8601(const String &iso8601Time) {
     Serial.println("❌ Failed to parse ISO 8601 time string.");
   }
 }
-
+time_t RTCManager::getEpochTime() {
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    time_t epochTime = mktime(&timeinfo);
+    return epochTime;
+    Serial.printf("📅 Current Epoch Time: %ld\n", epochTime);
+  } else {
+    Serial.println("❌ Failed to get current epoch time");
+  }
+}
 void RTCManager::printTime() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {

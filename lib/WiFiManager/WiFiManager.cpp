@@ -1,5 +1,7 @@
 #include "WiFiManager.h"
 #include "AppState.h"
+#include <ArduinoJson.h>
+
 #include <SPIFFSHelper.h>
 #include <vector>
 
@@ -37,6 +39,36 @@ void WiFiManager::asyncConnect(const char *ssid, const char *password,
   params->password = strdup(password); // deep copy
   params->callback = callback;
   xTaskCreate(connectTask, "ConnectTask", 8192, params, 1, &connectTaskHandle);
+}
+void WiFiManager::asyncConnectWithSavedCredentials(
+    ConnectionCallback callback) {
+  String wifiJsonString = readJsonFile(WIFI_CRED_FILE);
+  if (wifiJsonString.isEmpty() || wifiJsonString == "{}") {
+    Serial.println("⚠️ No valid Wi-Fi credentials found - "
+                   "asyncConnectWithSavedCredentials");
+    if (callback)
+      callback(false);
+    return;
+  }
+  DynamicJsonDocument doc(256);
+  DeserializationError errorParsingWifi = deserializeJson(doc, wifiJsonString);
+  if (errorParsingWifi) {
+    Serial.println("❌ JSON parse failed");
+    if (callback)
+      callback(false);
+    return;
+  } else {
+    String ssid = doc["ssid"].as<String>();
+    String password = doc["password"].as<String>();
+    Serial.println("📂 Read JSON: " + wifiJsonString);
+
+    ConnectParams *params = new ConnectParams;
+    params->ssid = strdup(ssid.c_str());
+    params->password = strdup(password.c_str());
+    params->callback = callback;
+    xTaskCreate(connectTask, "ConnectTask", 8192, params, 1,
+                &connectTaskHandle);
+  }
 }
 
 void WiFiManager::scanTask(void *parameter) {

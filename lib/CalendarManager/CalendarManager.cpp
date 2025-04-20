@@ -13,7 +13,7 @@ String CalendarManager::getMonthFilePath(int month, bool isIqama) {
 IqamaTimes CalendarManager::fetchTodayIqamaTimes(int month, int day) {
   Serial.println("📅 Fetching Iqama times for month: " + String(month) +
                  ", day: " + String(day));
-  Serial.println("📂 File path: " + getMonthFilePath(month, true));
+  // Serial.println("📂 File path: " + getMonthFilePath(month, true));
   IqamaTimes result;
 
   String filePath = getMonthFilePath(month, true);

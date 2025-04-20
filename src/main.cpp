@@ -7,9 +7,15 @@
 #include <ArduinoJson.h>
 #include <BLEManager.h>
 #include <CalendarManager.h>
+#include <MAWAQITManager.h>
 #include <RTCManager.h>
 
 CalendarManager calendarManager;
+
+RTC_DATA_ATTR unsigned long lastUpdateMillis =
+    0; // stores last successful MAWAQIT fetch (UTC time)
+const unsigned long updateInterval = 6UL * 60UL * 60UL * 1000UL; // 6 hours
+bool isFetching = false;
 
 bool bootstrap() {
   if (!SPIFFS.begin(true)) {
@@ -52,6 +58,7 @@ Countdown calculateCountdownToNextPrayer(const String &nextPrayer,
 }
 
 void executeMainTask() {
+
   setCpuFrequencyMhz(80);
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
 
@@ -93,11 +100,52 @@ void executeMainTask() {
   Serial.println("🌅 Sunrise: " + sunrise);
   Serial.println("---------------------------");
 
+  while (isFetching) {
+    Serial.println("⏳ Still fetching... delaying sleep.");
+    vTaskDelay(500 / portTICK_PERIOD_MS); // 500ms delay to yield
+  }
   int sleepDuration = 60 - currentSecond;
   Serial.printf("💤 Sleeping for %d seconds to align with full minute...\n",
                 sleepDuration);
   esp_sleep_enable_timer_wakeup(sleepDuration * 1000000ULL);
   esp_deep_sleep_start();
+}
+void fetchPrayerTimesIfDue() {
+  if (isFetching) {
+    Serial.println("⏳ Still waiting for MAWAQIT fetch to complete...");
+    return;
+  }
+
+  isFetching = true;
+  Serial.println("📡 Fetching prayer times from MAWAQIT...");
+  WiFiManager::getInstance().asyncConnectWithSavedCredentials([](bool success) {
+    if (!success) {
+      Serial.println("❌ Failed to connect to Wi-Fi for MAWAQIT fetch.");
+      isFetching = false;
+      Serial.println("Resume main task, will retry later...");
+      executeMainTask();
+      return;
+    }
+    Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
+    MAWAQITManager::getInstance().setApiKey(
+        "86ed48fd-691e-4370-a9bf-ae74f788ed54");
+    MAWAQITManager::getInstance().asyncFetchPrayerTimes(
+        "f9a51508-05b7-4324-a7e8-4acbc2893c02",
+        [](bool success, const char *path) {
+          isFetching = false;
+          lastUpdateMillis = millis();
+
+          if (success) {
+            Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
+            splitCalendarJson(MOSQUE_FILE);
+            splitCalendarJson(MOSQUE_FILE, true);
+          } else {
+            Serial.println("⚠️ Failed to fetch valid data after retries.");
+          }
+          // ✅ Once done, resume main task (like sleep)
+          executeMainTask();
+        });
+  });
 }
 
 void onWifiNetworksFound(const std::vector<ScanResult> &results) {
@@ -145,7 +193,9 @@ void onWiFiConnected(bool success) {
       Serial.println("❌ Failed to sync time");
     }
     RTCManager::getInstance().printTime();
+
     executeMainTask();
+
   } else {
     Serial.println("😓 Failed to connect to Wi‑Fi.");
   }
@@ -176,8 +226,6 @@ void setup() {
     return;
   }
 
-  // splitCalendarJson(MOSQUE_FILE, true);
-
   RTCManager &rtc = RTCManager::getInstance();
   if (!rtc.isTimeSynced()) {
     Serial.println("❌ Time not synced");
@@ -206,6 +254,15 @@ void setup() {
       wifi.asyncConnect(ssid.c_str(), password.c_str(), onWiFiConnected);
       return;
     }
+  }
+  time_t now = rtc.getEpochTime();
+  unsigned long secondsSinceLastUpdate = now - lastUpdateMillis;
+  if (lastUpdateMillis == 0 ||
+      secondsSinceLastUpdate >= (updateInterval / 1000)) {
+    Serial.printf(
+        "⏱️ It's been %lu seconds since last MAWAQIT fetch. Updating...\n",
+        secondsSinceLastUpdate);
+    fetchPrayerTimesIfDue();
   }
 
   executeMainTask();

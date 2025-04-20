@@ -23,6 +23,7 @@ public:
   void asyncScanNetworks(ScanCallback callback = nullptr);
   void asyncConnect(const char *ssid, const char *password,
                     ConnectionCallback callback = nullptr);
+  void asyncConnectWithSavedCredentials(ConnectionCallback callback = nullptr);
 
 private:
   WiFiManager();
