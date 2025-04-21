@@ -18,8 +18,12 @@ class WiFiManager {
 public:
   using ConnectionCallback = std::function<void(bool success)>;
   using ScanCallback = std::function<void(std::vector<ScanResult>)>;
+  using WifiConnectedCallback = std::function<void()>;
+  using WifiFailedToConnectCallback = std::function<void()>;
   static WiFiManager &getInstance();
-  void setScanResultCallback(ScanCallback cb); // 👈 new setter
+  void setScanResultCallback(ScanCallback cb);
+  void onWifiConnectedCallback(WifiConnectedCallback cb);
+  void onWifiFailedToConnectCallback(WifiFailedToConnectCallback cb);
 
   void asyncScanNetworks();
   void asyncConnect(const char *ssid, const char *password);
@@ -38,6 +42,8 @@ private:
     ScanCallback callback;
   };
   ScanCallback scanResultCallback = nullptr;
+  WifiConnectedCallback onWifiConnected = nullptr;
+  WifiFailedToConnectCallback onWifiFailedToConnect = nullptr;
 
   static void scanTask(void *parameter);
   static void connectTask(void *parameter);

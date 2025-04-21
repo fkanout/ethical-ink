@@ -17,6 +17,13 @@ WiFiManager &WiFiManager::getInstance() {
 void WiFiManager::setScanResultCallback(ScanCallback cb) {
   scanResultCallback = cb;
 }
+void WiFiManager::onWifiConnectedCallback(WifiConnectedCallback cb) {
+  onWifiConnected = cb;
+}
+void WiFiManager::onWifiFailedToConnectCallback(
+    WifiFailedToConnectCallback cb) {
+  onWifiFailedToConnect = cb;
+}
 void WiFiManager::asyncScanNetworks() {
   if (connectTaskHandle != nullptr) {
     Serial.println("🛑 Stopping ongoing Wi-Fi connection task...");
@@ -29,15 +36,14 @@ void WiFiManager::asyncScanNetworks() {
 void WiFiManager::asyncConnect(const char *ssid, const char *password) {
   if (!ssid || strlen(ssid) == 0) {
     Serial.println("❌ asyncConnect: SSID is empty — aborting connection.");
-
     return;
   }
-
   ConnectParams *params = new ConnectParams;
   params->ssid = strdup(ssid);         // deep copy
   params->password = strdup(password); // deep copy
   xTaskCreate(connectTask, "ConnectTask", 8192, params, 1, &connectTaskHandle);
 }
+
 void WiFiManager::asyncConnectWithSavedCredentials() {
   String wifiJsonString = readJsonFile(WIFI_CRED_FILE);
   if (wifiJsonString.isEmpty() || wifiJsonString == "{}") {
@@ -115,6 +121,9 @@ void WiFiManager::connectTask(void *parameter) {
                     "\",\"password\":\"" + String(params->password) + "\"}";
       writeJsonFile(WIFI_CRED_FILE, json);
       Serial.printf("💾 Wifi Credentials saved to %s\n", WIFI_CRED_FILE);
+      if (WiFiManager::getInstance().onWifiConnected) {
+        WiFiManager::getInstance().onWifiConnected();
+      }
       break;
     } else {
       Serial.println("❌ Connection attempt failed. Retrying...");
@@ -124,6 +133,9 @@ void WiFiManager::connectTask(void *parameter) {
 
   if (!connected) {
     Serial.println("❌ Failed to connect after all retries.");
+    if (WiFiManager::getInstance().onWifiFailedToConnect) {
+      WiFiManager::getInstance().onWifiFailedToConnect();
+    }
     WiFi.disconnect();
   }
 
