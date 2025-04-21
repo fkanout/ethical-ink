@@ -11,12 +11,13 @@
 #include <RTCManager.h>
 
 CalendarManager calendarManager;
-
+unsigned int sleepDuration = 60; // in seconds, default fallback
 RTC_DATA_ATTR unsigned long lastUpdateMillis =
     0; // stores last successful MAWAQIT fetch (UTC time)
 const unsigned long updateInterval = 6UL * 60UL * 60UL * 1000UL; // 6 hours
 bool isFetching = false;
-
+AppState state = BOOTING;
+AppState lastState = FETAL_ERROR;
 Countdown calculateCountdownToNextPrayer(const String &nextPrayer,
                                          const struct tm &now) {
   int currentSeconds = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec;
@@ -51,6 +52,7 @@ void executeMainTask() {
 
   setCpuFrequencyMhz(80);
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
+  unsigned long startTime = millis();
 
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
@@ -90,119 +92,19 @@ void executeMainTask() {
   Serial.println("🌅 Sunrise: " + sunrise);
   Serial.println("---------------------------");
 
-  // while (isFetching) {
-  //   Serial.println("⏳ Still fetching... delaying sleep.");
-  //   vTaskDelay(500 / portTICK_PERIOD_MS); // 500ms delay to yield
-  // }
-  int sleepDuration = 60 - currentSecond;
-  Serial.printf("💤 Sleeping for %d seconds to align with full minute...\n",
-                sleepDuration);
-  esp_sleep_enable_timer_wakeup(sleepDuration * 1000000ULL);
-  esp_deep_sleep_start();
+  sleepDuration = 60 - currentSecond;
+  unsigned long duration = millis() - startTime;
+  Serial.printf("⏱️ Main task completed in %lu ms\n", duration);
+  state = SLEEPING;
 }
-
-void onWifiNetworksFound(const std::vector<ScanResult> &results) {
-  Serial.println("📋 Wi-Fi networks:");
-  String json = "[";
-  for (size_t i = 0; i < results.size(); ++i) {
-    const auto &net = results[i];
-    String displaySSID = net.ssid.substring(0, 25);
-    const char *security = net.secured ? "secured" : "open";
-
-    // ✅ Print nicely formatted output
-    Serial.printf("   📶 %-25s %5ddBm  %s\n", displaySSID.c_str(), net.rssi,
-                  security);
-    // ✅ Add to JSON
-    json += "{";
-    json += "\"ssid\":\"" + displaySSID + "\",";
-    json += "\"rssi\":" + String(net.rssi) + ",";
-    json += "\"secured\":" + String(net.secured ? "true" : "false");
-    json += "}";
-    if (i < results.size() - 1) {
-      json += ",";
-    }
-  }
-  json += "]";
-  BLEManager::getInstance().sendBLEData(json);
-}
-
-void onBLENotificationEnabled() {
-  Serial.println("🔔 BLE notification enabled");
-  WiFiManager::getInstance().asyncScanNetworks();
-}
-
-void onWifiConnected() {
-  Serial.println("✅ Wi-Fi connected");
-  BLEManager::getInstance().stopAdvertising();
-  RTCManager &rtc = RTCManager::getInstance();
-  bool timeIsSynced = rtc.syncTimeFromNTPWithOffset(3, 10000);
-
-  if (timeIsSynced) {
-    Serial.println("✅ Time synced successfully");
-    executeMainTask();
-  } else {
-    Serial.println("❌ Failed to sync time");
-  }
-  rtc.printTime();
-}
-
-void onJsonReceivedCallback(const String &json) {
-  Serial.println("📩 Received JSON over BLE: " + json);
-  WiFiManager &wifi = WiFiManager::getInstance();
-
-  StaticJsonDocument<256> doc;
-  DeserializationError err = deserializeJson(doc, json);
-  if (err) {
-    Serial.println("❌ Invalid JSON format");
-    return;
-  }
-  String ssid = doc["ssid"].as<String>();
-  String password = doc["password"].as<String>();
-  if (ssid.isEmpty() || password.isEmpty()) {
-    Serial.println("⚠️ Incomplete Wi-Fi credentials.");
-    Serial.println("🔔 Turning on BLE...");
-    BLEManager::getInstance().setupBLE();
-    return;
-  }
-  if (doc.containsKey("ssid")) {
-    String ssid = doc["ssid"];
-    String password = doc["password"];
-    wifi.asyncConnect(ssid.c_str(), password.c_str());
-  }
-}
-void onWifiFailedToConnect() {
-  Serial.println("❌ Failed to connect to Wi-Fi");
-  BLEManager::getInstance().setupBLE();
-}
-bool bootstrap() {
-  if (!SPIFFS.begin(true)) {
-    Serial.println("❌ Failed to mount SPIFFS");
-    return false;
-  }
-  Serial.println("✅ SPIFFS mounted successfully");
-
-  BLEManager &bleManager = BLEManager::getInstance();
-  bleManager.onNotificationEnabled(onBLENotificationEnabled);
-  bleManager.onJsonReceived(onJsonReceivedCallback);
-
-  WiFiManager &wifiManager = WiFiManager::getInstance();
-  wifiManager.setScanResultCallback(onWifiNetworksFound);
-  wifiManager.onWifiConnectedCallback(onWifiConnected);
-  wifiManager.onWifiFailedToConnectCallback(onWifiFailedToConnect);
-
-  Serial.println("✅ Bootstrap successful, callbacks set up");
-
-  return true;
-}
-
 void fetchPrayerTimesIfDue() {
-  if (isFetching) {
-    Serial.println("⏳ Still waiting for MAWAQIT fetch to complete...");
-    return;
-  }
+  // if (isFetching) {
+  //   Serial.println("⏳ Still waiting for MAWAQIT fetch to complete...");
+  //   return;
+  // }
 
-  isFetching = true;
-  Serial.println("📡 Fetching prayer times from MAWAQIT...");
+  // isFetching = true;
+  // Serial.println("📡 Fetching prayer times from MAWAQIT...");
   // WiFiManager::getInstance().asyncConnectWithSavedCredentials([](bool
   // success) {
   //   if (!success) {
@@ -222,8 +124,8 @@ void fetchPrayerTimesIfDue() {
   //         lastUpdateMillis = millis();
 
   //         if (success) {
-  //           Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
-  //           splitCalendarJson(MOSQUE_FILE);
+  //           Serial.printf("📂 Valid prayer times file ready at: %s\n",
+  //           path); splitCalendarJson(MOSQUE_FILE);
   //           splitCalendarJson(MOSQUE_FILE, true);
   //         } else {
   //           Serial.println("⚠️ Failed to fetch valid data after retries.");
@@ -236,56 +138,188 @@ void fetchPrayerTimesIfDue() {
 
 void setup() {
   Serial.begin(115200);
-  delay(500);
+  delay(300);
+  state = BOOTING;
+}
 
-  if (!bootstrap()) {
-    Serial.println("❌ Bootstrap failed");
-    return;
+void handleBooting() {
+  if (!SPIFFS.begin(true)) {
+    Serial.println("❌ Failed to mount SPIFFS");
+    state = FETAL_ERROR;
   }
+  Serial.println("✅ SPIFFS mounted successfully");
+  state = CHECKING_TIME;
+}
 
+void handleCheckingTime() {
+  Serial.println("⏱️ Checking time...");
   RTCManager &rtc = RTCManager::getInstance();
-  if (!rtc.isTimeSynced()) {
+  if (rtc.isTimeSynced()) {
+    Serial.println("✅ Time synced");
+    state = RUNNING_MAIN_TASK;
+  } else {
     Serial.println("❌ Time not synced");
-    WiFiManager &wifi = WiFiManager::getInstance();
-    String wifiJsonString = readJsonFile(WIFI_CRED_FILE);
-    if (wifiJsonString.isEmpty() || wifiJsonString == "{}") {
-      Serial.println("⚠️ No valid Wi-Fi credentials found.");
-      Serial.println("🔔 Turning on BLE...");
-      BLEManager::getInstance().setupBLE();
-      return;
+    state = CONNECTING_WIFI_WITH_SAVED_CREDENTIALS;
+  }
+}
+
+void handleConnectingWifiWithSavedCredentials() {
+  Serial.println("🔄 Connecting to Wi-Fi...");
+  WiFiManager &wifi = WiFiManager::getInstance();
+  wifi.asyncConnectWithSavedCredentials();
+  wifi.onWifiConnectedCallback([]() {
+    Serial.println("✅ Wi-Fi connected");
+    BLEManager::getInstance().stopAdvertising();
+    state = SYNCING_TIME;
+  });
+  wifi.onWifiFailedToConnectCallback([]() {
+    Serial.println("❌ Failed to connect to Wi-Fi");
+    state = ADVERTISING_BLE;
+  });
+}
+
+void handleSyncingTime() {
+  Serial.println("🔄 Syncing time...");
+  RTCManager &rtc = RTCManager::getInstance();
+  if (rtc.syncTimeFromNTPWithOffset(3, 10000)) {
+    Serial.println("✅ Time synced successfully");
+    state = RUNNING_MAIN_TASK;
+  } else {
+    Serial.println("❌ Failed to sync time");
+    state = ADVERTISING_BLE;
+  }
+}
+
+void handleAdvertisingBLE() {
+  Serial.println("🔔 Advertising BLE...");
+  BLEManager &ble = BLEManager::getInstance();
+  ble.setupBLE();
+  ble.onNotificationEnabled([]() {
+    Serial.println("🔔 BLE notification enabled");
+    state = WAITING_FOR_WIFI_SCAN;
+  });
+}
+
+void handleWaitingForWifiScan() {
+  Serial.println("🔄 Waiting for Wi-Fi scan...");
+  WiFiManager &wifi = WiFiManager::getInstance();
+  wifi.asyncScanNetworks();
+  wifi.setScanResultCallback([](const std::vector<ScanResult> &results) {
+    Serial.println("📋 Wi-Fi scan results:");
+    String json = "[";
+    for (size_t i = 0; i < results.size(); ++i) {
+      const auto &net = results[i];
+      String displaySSID = net.ssid.substring(0, 25);
+      const char *security = net.secured ? "secured" : "open";
+      Serial.printf("   📶 %-25s %5ddBm  %s\n", displaySSID.c_str(), net.rssi,
+                    security);
+      json += "{";
+      json += "\"ssid\":\"" + displaySSID + "\",";
+      json += "\"rssi\":" + String(net.rssi) + ",";
+      json += "\"secured\":" + String(net.secured ? "true" : "false");
+      json += "}";
+      if (i < results.size() - 1) {
+        json += ",";
+      }
     }
-    DynamicJsonDocument doc(256);
-    DeserializationError errorParsingWifi =
-        deserializeJson(doc, wifiJsonString);
-    if (errorParsingWifi) {
-      Serial.println("❌ JSON parse failed");
-      wifi.asyncScanNetworks();
-      return;
-    } else {
+    json += "]";
+    BLEManager::getInstance().onNotificationEnabled(
+        []() { handleWaitingForWifiScan(); });
+    BLEManager::getInstance().sendBLEData(json);
+    BLEManager::getInstance().onJsonReceived([](const String &json) {
+      Serial.println("📩 Received JSON over BLE: " + json);
+      WiFiManager &wifi = WiFiManager::getInstance();
+      StaticJsonDocument<256> doc;
+      DeserializationError err = deserializeJson(doc, json);
+      if (err) {
+        Serial.println("❌ Invalid JSON format");
+        state = ADVERTISING_BLE;
+        return;
+      }
       String ssid = doc["ssid"].as<String>();
       String password = doc["password"].as<String>();
-      Serial.println("📂 Read JSON: " + wifiJsonString);
       if (ssid.isEmpty() || password.isEmpty()) {
         Serial.println("⚠️ Incomplete Wi-Fi credentials.");
-        Serial.println("🔔 Turning on BLE...");
-        BLEManager::getInstance().setupBLE();
+        state = ADVERTISING_BLE;
         return;
       }
       wifi.asyncConnect(ssid.c_str(), password.c_str());
-      return;
-    }
-  }
-  time_t now = rtc.getEpochTime();
-  unsigned long secondsSinceLastUpdate = now - lastUpdateMillis;
-  if (lastUpdateMillis == 0 ||
-      secondsSinceLastUpdate >= (updateInterval / 1000)) {
-    Serial.printf(
-        "⏱️ It's been %lu seconds since last MAWAQIT fetch. Updating...\n",
-        secondsSinceLastUpdate);
-    fetchPrayerTimesIfDue();
-  }
-
-  executeMainTask();
+      state = CONNECTING_WIFI;
+    });
+  });
 }
 
-void loop() { vTaskDelay(100 / portTICK_PERIOD_MS); }
+void handleUseWifiInput() {
+  Serial.println("🔄 Waiting for user Wi-Fi input...");
+  BLEManager &ble = BLEManager::getInstance();
+}
+void handleConnectingWifi() {
+  Serial.println("🔄 Connecting to Wi-Fi...");
+  WiFiManager &wifi = WiFiManager::getInstance();
+  wifi.onWifiConnectedCallback([]() {
+    Serial.println("✅ Wi-Fi connected");
+    BLEManager::getInstance().stopAdvertising();
+    state = SYNCING_TIME;
+  });
+  wifi.onWifiFailedToConnectCallback([]() {
+    Serial.println("❌ Failed to connect to Wi-Fi");
+    state = ADVERTISING_BLE;
+  });
+}
+
+void handleSleeping() {
+  Serial.printf("💤 Sleeping for %d seconds to align with full minute...\n",
+                sleepDuration);
+  esp_sleep_enable_timer_wakeup(sleepDuration * 1000000ULL);
+  esp_deep_sleep_start();
+}
+
+void handleMainTaskState() {
+  Serial.println("⚙️ Running main task...");
+  executeMainTask();
+  state = SLEEPING;
+}
+
+void handleAppState() {
+  switch (state) {
+  case BOOTING:
+    handleBooting();
+    break;
+  case CHECKING_TIME:
+    handleCheckingTime();
+    break;
+  case CONNECTING_WIFI:
+    handleConnectingWifi();
+    break;
+  case CONNECTING_WIFI_WITH_SAVED_CREDENTIALS:
+    handleConnectingWifiWithSavedCredentials();
+    break;
+  case SYNCING_TIME:
+    handleSyncingTime();
+    break;
+  case ADVERTISING_BLE:
+    handleAdvertisingBLE();
+    break;
+  case WAITING_FOR_WIFI_SCAN:
+    handleWaitingForWifiScan();
+    break;
+  case RUNNING_MAIN_TASK:
+    handleMainTaskState();
+    break;
+  case SLEEPING:
+    handleSleeping();
+    break;
+  case FETAL_ERROR:
+    break;
+  }
+}
+
+void loop() {
+  if (state != lastState) {
+    Serial.printf("🔁 State changed: %d ➡️ %d\n", lastState, state);
+    lastState = state;
+    handleAppState();
+  }
+
+  vTaskDelay(100 / portTICK_PERIOD_MS);
+}

@@ -59,7 +59,13 @@ void WiFiManager::asyncConnectWithSavedCredentials() {
   } else {
     String ssid = doc["ssid"].as<String>();
     String password = doc["password"].as<String>();
-    Serial.println("📂 Read JSON: " + wifiJsonString);
+    if (ssid.isEmpty() || password.isEmpty()) {
+      Serial.println("⚠️ Incomplete Wi-Fi credentials.");
+      if (WiFiManager::getInstance().onWifiFailedToConnect) {
+        WiFiManager::getInstance().onWifiFailedToConnect();
+      }
+      return;
+    }
 
     ConnectParams *params = new ConnectParams;
     params->ssid = strdup(ssid.c_str());
