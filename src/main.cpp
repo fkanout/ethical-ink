@@ -12,8 +12,7 @@
 
 CalendarManager calendarManager;
 unsigned int sleepDuration = 60; // in seconds, default fallback
-RTC_DATA_ATTR unsigned long lastUpdateMillis =
-    0; // stores last successful MAWAQIT fetch (UTC time)
+RTC_DATA_ATTR time_t lastUpdateMillis = 0;
 const unsigned long updateInterval = 6UL * 60UL * 60UL * 1000UL; // 6 hours
 bool isFetching = false;
 AppState state = BOOTING;
@@ -49,7 +48,6 @@ Countdown calculateCountdownToNextPrayer(const String &nextPrayer,
 }
 
 void executeMainTask() {
-
   setCpuFrequencyMhz(80);
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
   unsigned long startTime = millis();
@@ -95,45 +93,31 @@ void executeMainTask() {
   sleepDuration = 60 - currentSecond;
   unsigned long duration = millis() - startTime;
   Serial.printf("⏱️ Main task completed in %lu ms\n", duration);
-  state = SLEEPING;
 }
+
 void fetchPrayerTimesIfDue() {
-  // if (isFetching) {
-  //   Serial.println("⏳ Still waiting for MAWAQIT fetch to complete...");
-  //   return;
-  // }
+  Serial.println("📡 Fetching prayer times from MAWAQIT...");
+  WiFiManager::getInstance().asyncConnectWithSavedCredentials();
+  WiFiManager::getInstance().onWifiConnectedCallback([]() {
+    Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
+    MAWAQITManager::getInstance().setApiKey(
+        "86ed48fd-691e-4370-a9bf-ae74f788ed54");
+    MAWAQITManager::getInstance().asyncFetchPrayerTimes(
+        "f9a51508-05b7-4324-a7e8-4acbc2893c02",
+        [](bool success, const char *path) {
+          if (success) {
+            Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
+            splitCalendarJson(MOSQUE_FILE);
+            splitCalendarJson(MOSQUE_FILE, true);
+            lastUpdateMillis = RTCManager::getInstance().getEpochTime();
+            state = RUNNING_MAIN_TASK;
 
-  // isFetching = true;
-  // Serial.println("📡 Fetching prayer times from MAWAQIT...");
-  // WiFiManager::getInstance().asyncConnectWithSavedCredentials([](bool
-  // success) {
-  //   if (!success) {
-  //     Serial.println("❌ Failed to connect to Wi-Fi for MAWAQIT fetch.");
-  //     isFetching = false;
-  //     Serial.println("Resume main task, will retry later...");
-  //     executeMainTask();
-  //     return;
-  //   }
-  //   Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
-  //   MAWAQITManager::getInstance().setApiKey(
-  //       "86ed48fd-691e-4370-a9bf-ae74f788ed54");
-  //   MAWAQITManager::getInstance().asyncFetchPrayerTimes(
-  //       "f9a51508-05b7-4324-a7e8-4acbc2893c02",
-  //       [](bool success, const char *path) {
-  //         isFetching = false;
-  //         lastUpdateMillis = millis();
-
-  //         if (success) {
-  //           Serial.printf("📂 Valid prayer times file ready at: %s\n",
-  //           path); splitCalendarJson(MOSQUE_FILE);
-  //           splitCalendarJson(MOSQUE_FILE, true);
-  //         } else {
-  //           Serial.println("⚠️ Failed to fetch valid data after retries.");
-  //         }
-  //         // ✅ Once done, resume main task (like sleep)
-  //         executeMainTask();
-  //       });
-  // });
+          } else {
+            Serial.println("⚠️ Failed to fetch valid data after retries.");
+            state = SLEEPING;
+          }
+        });
+  });
 }
 
 void setup() {
@@ -277,9 +261,42 @@ void handleSleeping() {
 void handleMainTaskState() {
   Serial.println("⚙️ Running main task...");
   executeMainTask();
-  state = SLEEPING;
+  state = SHOULD_FETCH_MOSQUE_DATA;
 }
+void handleShouldFetchMosqueData() {
+  Serial.println("🔄 Checking if mosque data needs to be fetched...");
 
+  time_t now = RTCManager::getInstance().getEpochTime();
+  if (now < 100000) {
+    Serial.println("⚠️ Skipping fetch: RTC not synced yet.");
+    state = SLEEPING;
+    return;
+  }
+
+  if (lastUpdateMillis == 0) {
+    Serial.println("🆕 No previous update. Fetching mosque data...");
+    fetchPrayerTimesIfDue();
+    return;
+  }
+
+  unsigned long elapsed = now - lastUpdateMillis;
+  unsigned long elapsedHours = elapsed / 3600;
+  unsigned long elapsedMinutes = (elapsed % 3600) / 60;
+
+  if (elapsed >= updateInterval / 1000) {
+    Serial.printf("⏱️ It's been %luh %lum since last update. Fetching now...\n",
+                  elapsedHours, elapsedMinutes);
+    fetchPrayerTimesIfDue();
+  } else {
+    unsigned long remaining = (updateInterval / 1000) - elapsed;
+    unsigned long remainingHours = remaining / 3600;
+    unsigned long remainingMinutes = (remaining % 3600) / 60;
+    Serial.printf("🕰️ Only %luh %lum elapsed. Next fetch in %luh %lum.\n",
+                  elapsedHours, elapsedMinutes, remainingHours,
+                  remainingMinutes);
+    state = SLEEPING;
+  }
+}
 void handleAppState() {
   switch (state) {
   case BOOTING:
@@ -305,6 +322,9 @@ void handleAppState() {
     break;
   case RUNNING_MAIN_TASK:
     handleMainTaskState();
+    break;
+  case SHOULD_FETCH_MOSQUE_DATA:
+    handleShouldFetchMosqueData();
     break;
   case SLEEPING:
     handleSleeping();

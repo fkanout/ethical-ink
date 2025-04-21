@@ -30,9 +30,9 @@ time_t RTCManager::getEpochTime() {
   if (getLocalTime(&timeinfo)) {
     time_t epochTime = mktime(&timeinfo);
     return epochTime;
-    Serial.printf("📅 Current Epoch Time: %ld\n", epochTime);
   } else {
     Serial.println("❌ Failed to get current epoch time");
+    return 0;
   }
 }
 void RTCManager::printTime() {
