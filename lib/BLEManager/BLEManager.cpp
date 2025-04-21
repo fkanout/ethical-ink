@@ -13,11 +13,11 @@
   "b8b3f5a4-12d5-4d8f-9b6c-8a7f4c1e2d40"
 #define CHARACTERISTIC_TIME_UUID "b8b3f5a4-12d5-4d8f-9b6c-8a7f4c1e2d41"
 #define CHARACTERISTIC_WIFI_SCAN_UUID "b8b3f5a4-12d5-4d8f-9b6c-8a7f4c1e2d42"
+
 BLEManager::NotificationToggleCallback BLEManager::notificationCallback =
     nullptr;
 
 BLEManager::JsonReceivedCallback BLEManager::jsonCallback = nullptr;
-
 BLECharacteristic *pJsonCharacteristic = nullptr;
 BLECharacteristic *pTimeCharacteristic = nullptr;
 BLECharacteristic *pWifiScanCharacteristic = nullptr;
@@ -32,7 +32,7 @@ BLEManager &BLEManager::getInstance() {
   static BLEManager instance;
   return instance;
 }
-void BLEManager::setNotificationEnabledCallback(NotificationToggleCallback cb) {
+void BLEManager::onNotificationEnabled(NotificationToggleCallback cb) {
   notificationCallback = cb;
 }
 
@@ -41,22 +41,21 @@ void BLEManager::invokeNotificationCallback() {
     notificationCallback();
   }
 }
-void BLEManager::setJsonReceivedCallback(JsonReceivedCallback cb) {
-  jsonCallback = cb;
-}
+void BLEManager::onJsonReceived(JsonReceivedCallback cb) { jsonCallback = cb; }
 
 void BLEManager::invokeJsonReceivedCallback(const String &json) {
   if (jsonCallback) {
     jsonCallback(json);
   }
 }
+
 // ===================== 🟡 BLE Callbacks =====================
 class NotifyStatusDescriptorCallback : public BLEDescriptorCallbacks {
   void onWrite(BLEDescriptor *pDesc) override {
     uint8_t *value = pDesc->getValue();
     if (value[0] == 0x01) {
       Serial.println("📲 Notifications enabled!");
-      BLEManager::invokeNotificationCallback();
+      BLEManager::getInstance().invokeNotificationCallback();
     }
   }
 };
@@ -66,7 +65,6 @@ class JsonReceivedCallbacks : public BLECharacteristicCallbacks {
     std::string value = pChar->getValue();
     if (!value.empty()) {
       BLEManager::invokeJsonReceivedCallback(String(value.c_str()));
-      Serial.printf("📦 Free heap: %u bytes\n", ESP.getFreeHeap());
     }
   }
 };
@@ -119,8 +117,8 @@ void BLEManager::setupBLE() {
   pWifiScanCharacteristic->addDescriptor(desc);
 
   pService->start();
-  BLEDevice::startAdvertising();
   Serial.println("📡 BLE is advertising...");
+  BLEDevice::startAdvertising();
 }
 
 bool BLEManager::isNewBLEDataAvailable() { return newDataAvailable; }
@@ -132,7 +130,7 @@ void BLEManager::stopAdvertising() {
 
 void BLEManager::startAdvertising() {
   BLEDevice::startAdvertising();
-  Serial.println("🔔 BLE advertising restarted");
+  Serial.println("🔔 BLE advertising started");
 }
 
 String BLEManager::getReceivedBLEData() {
@@ -151,7 +149,7 @@ void BLEManager::sendBLEData(const String &json) {
   if (isConnected && pWifiScanCharacteristic) {
     pWifiScanCharacteristic->setValue(json.c_str());
     pWifiScanCharacteristic->notify();
-    Serial.println("📡 Sent Wi-Fi list: " + json);
+    Serial.println("📤 Wi-Fi list send via BLE");
   } else {
     Serial.println("⚠️ Not connected or characteristic missing");
   }

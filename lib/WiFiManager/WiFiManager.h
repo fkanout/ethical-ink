@@ -19,11 +19,11 @@ public:
   using ConnectionCallback = std::function<void(bool success)>;
   using ScanCallback = std::function<void(std::vector<ScanResult>)>;
   static WiFiManager &getInstance();
+  void setScanResultCallback(ScanCallback cb); // 👈 new setter
 
-  void asyncScanNetworks(ScanCallback callback = nullptr);
-  void asyncConnect(const char *ssid, const char *password,
-                    ConnectionCallback callback = nullptr);
-  void asyncConnectWithSavedCredentials(ConnectionCallback callback = nullptr);
+  void asyncScanNetworks();
+  void asyncConnect(const char *ssid, const char *password);
+  void asyncConnectWithSavedCredentials();
 
 private:
   WiFiManager();
@@ -33,11 +33,12 @@ private:
   struct ConnectParams {
     const char *ssid;
     const char *password;
-    ConnectionCallback callback;
   };
   struct ScanParams {
     ScanCallback callback;
   };
+  ScanCallback scanResultCallback = nullptr;
+
   static void scanTask(void *parameter);
   static void connectTask(void *parameter);
 };

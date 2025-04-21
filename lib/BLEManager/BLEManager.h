@@ -18,16 +18,20 @@ public:
   bool isNewBLEDataAvailable();
   String getReceivedBLEData();
 
-  void setNotificationEnabledCallback(NotificationToggleCallback cb);
-  void setJsonReceivedCallback(JsonReceivedCallback cb);
+  void onNotificationEnabled(NotificationToggleCallback cb);
+  void onJsonReceived(JsonReceivedCallback cb);
 
   static void invokeNotificationCallback();
   static void invokeJsonReceivedCallback(const String &json);
+  bool getIsDeviceConnectedWithNotification();
 
 private:
   BLEManager() = default;
   BLEManager(const BLEManager &) = delete;
   BLEManager &operator=(const BLEManager &) = delete;
+
   static NotificationToggleCallback notificationCallback;
   static JsonReceivedCallback jsonCallback;
+  friend class NotifyStatusDescriptorCallback; // 👈 allow access from internal
+                                               // BLE callback
 };

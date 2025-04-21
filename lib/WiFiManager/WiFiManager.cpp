@@ -14,48 +14,41 @@ WiFiManager &WiFiManager::getInstance() {
   static WiFiManager instance;
   return instance;
 }
-
-void WiFiManager::asyncScanNetworks(ScanCallback callback) {
+void WiFiManager::setScanResultCallback(ScanCallback cb) {
+  scanResultCallback = cb;
+}
+void WiFiManager::asyncScanNetworks() {
   if (connectTaskHandle != nullptr) {
     Serial.println("🛑 Stopping ongoing Wi-Fi connection task...");
     vTaskDelete(connectTaskHandle);
     connectTaskHandle = nullptr;
   }
-  ScanParams *params = new ScanParams{.callback = callback};
-  xTaskCreate(scanTask, "ScanTask", 8192, params, 1, nullptr);
+  xTaskCreate(scanTask, "ScanTask", 8192, nullptr, 1, nullptr);
 }
 
-void WiFiManager::asyncConnect(const char *ssid, const char *password,
-                               ConnectionCallback callback) {
+void WiFiManager::asyncConnect(const char *ssid, const char *password) {
   if (!ssid || strlen(ssid) == 0) {
     Serial.println("❌ asyncConnect: SSID is empty — aborting connection.");
-    if (callback)
-      callback(false);
+
     return;
   }
 
   ConnectParams *params = new ConnectParams;
   params->ssid = strdup(ssid);         // deep copy
   params->password = strdup(password); // deep copy
-  params->callback = callback;
   xTaskCreate(connectTask, "ConnectTask", 8192, params, 1, &connectTaskHandle);
 }
-void WiFiManager::asyncConnectWithSavedCredentials(
-    ConnectionCallback callback) {
+void WiFiManager::asyncConnectWithSavedCredentials() {
   String wifiJsonString = readJsonFile(WIFI_CRED_FILE);
   if (wifiJsonString.isEmpty() || wifiJsonString == "{}") {
     Serial.println("⚠️ No valid Wi-Fi credentials found - "
                    "asyncConnectWithSavedCredentials");
-    if (callback)
-      callback(false);
     return;
   }
   DynamicJsonDocument doc(256);
   DeserializationError errorParsingWifi = deserializeJson(doc, wifiJsonString);
   if (errorParsingWifi) {
     Serial.println("❌ JSON parse failed");
-    if (callback)
-      callback(false);
     return;
   } else {
     String ssid = doc["ssid"].as<String>();
@@ -65,14 +58,13 @@ void WiFiManager::asyncConnectWithSavedCredentials(
     ConnectParams *params = new ConnectParams;
     params->ssid = strdup(ssid.c_str());
     params->password = strdup(password.c_str());
-    params->callback = callback;
     xTaskCreate(connectTask, "ConnectTask", 8192, params, 1,
                 &connectTaskHandle);
   }
 }
 
 void WiFiManager::scanTask(void *parameter) {
-  ScanParams *scanParams = static_cast<ScanParams *>(parameter);
+  (void)parameter;
   std::vector<ScanResult> results;
 
   Serial.println("🔍 Scanning WiFi networks...");
@@ -88,12 +80,11 @@ void WiFiManager::scanTask(void *parameter) {
                                (WiFi.encryptionType(i) != WIFI_AUTH_OPEN)};
       results.push_back(result);
     }
-
-    if (scanParams->callback) {
-      scanParams->callback(results);
+    if (WiFiManager::getInstance().scanResultCallback) {
+      WiFiManager::getInstance().scanResultCallback(results);
     }
   }
-  delete scanParams;
+
   WiFi.scanDelete();
   vTaskDelete(NULL);
 }
@@ -134,10 +125,6 @@ void WiFiManager::connectTask(void *parameter) {
   if (!connected) {
     Serial.println("❌ Failed to connect after all retries.");
     WiFi.disconnect();
-  }
-
-  if (params->callback) {
-    params->callback(connected);
   }
 
   // Clean up

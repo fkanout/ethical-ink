@@ -17,6 +17,69 @@ RTC_DATA_ATTR unsigned long lastUpdateMillis =
 const unsigned long updateInterval = 6UL * 60UL * 60UL * 1000UL; // 6 hours
 bool isFetching = false;
 
+void onWifiNetworksFound(const std::vector<ScanResult> &results) {
+  Serial.println("📋 Wi-Fi networks:");
+  String json = "[";
+  for (size_t i = 0; i < results.size(); ++i) {
+    const auto &net = results[i];
+    String displaySSID = net.ssid.substring(0, 25);
+    const char *security = net.secured ? "secured" : "open";
+
+    // ✅ Print nicely formatted output
+    Serial.printf("   📶 %-25s %5ddBm  %s\n", displaySSID.c_str(), net.rssi,
+                  security);
+    // ✅ Add to JSON
+    json += "{";
+    json += "\"ssid\":\"" + displaySSID + "\",";
+    json += "\"rssi\":" + String(net.rssi) + ",";
+    json += "\"secured\":" + String(net.secured ? "true" : "false");
+    json += "}";
+    if (i < results.size() - 1) {
+      json += ",";
+    }
+  }
+  json += "]";
+  BLEManager::getInstance().sendBLEData(json);
+}
+
+void onBLENotificationEnabled() {
+  Serial.println("🔔 BLE notification enabled");
+  WiFiManager::getInstance().asyncScanNetworks();
+}
+
+void onJsonReceivedCallback(const String &json) {
+  Serial.println("📩 Received JSON over BLE: " + json);
+  WiFiManager &wifi = WiFiManager::getInstance();
+
+  StaticJsonDocument<256> doc;
+  DeserializationError err = deserializeJson(doc, json);
+  if (err) {
+    Serial.println("❌ Invalid JSON format");
+    return;
+  }
+
+  if (doc.containsKey("ssid")) {
+    String ssid = doc["ssid"];
+    String password = doc["password"];
+    // wifi.asyncConnect(ssid.c_str(), password.c_str(), [](bool success) {
+    //   if (success) {
+    //     Serial.println("🎉 Wi‑Fi connected — syncing time...");
+    //     RTCManager &rtc = RTCManager::getInstance();
+    //     bool timeIsSynced = rtc.syncTimeFromNTPWithOffset(3, 10000);
+    //     if (timeIsSynced) {
+    //       Serial.println("✅ Time synced successfully");
+    //     } else {
+    //       Serial.println("❌ Failed to sync time");
+    //     }
+    //     RTCManager::getInstance().printTime();
+    //   } else {
+    //     Serial.println("😓 Failed to connect to Wi‑Fi.");
+    //     Serial.println("🔔 Turning on BLE...");
+    //     BLEManager::getInstance().setupBLE();
+    //   }
+    // });
+  }
+}
 bool bootstrap() {
   if (!SPIFFS.begin(true)) {
     Serial.println("❌ Failed to mount SPIFFS");
@@ -24,6 +87,12 @@ bool bootstrap() {
   }
   Serial.println("✅ SPIFFS mounted successfully");
   Serial.println("✅ Bootstrap successful");
+  BLEManager &bleManager = BLEManager::getInstance();
+  bleManager.onNotificationEnabled(onBLENotificationEnabled);
+  bleManager.onJsonReceived(onJsonReceivedCallback);
+
+  WiFiManager &wifiManager = WiFiManager::getInstance();
+  wifiManager.setScanResultCallback(onWifiNetworksFound);
   return true;
 }
 
@@ -118,105 +187,37 @@ void fetchPrayerTimesIfDue() {
 
   isFetching = true;
   Serial.println("📡 Fetching prayer times from MAWAQIT...");
-  WiFiManager::getInstance().asyncConnectWithSavedCredentials([](bool success) {
-    if (!success) {
-      Serial.println("❌ Failed to connect to Wi-Fi for MAWAQIT fetch.");
-      isFetching = false;
-      Serial.println("Resume main task, will retry later...");
-      executeMainTask();
-      return;
-    }
-    Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
-    MAWAQITManager::getInstance().setApiKey(
-        "86ed48fd-691e-4370-a9bf-ae74f788ed54");
-    MAWAQITManager::getInstance().asyncFetchPrayerTimes(
-        "f9a51508-05b7-4324-a7e8-4acbc2893c02",
-        [](bool success, const char *path) {
-          isFetching = false;
-          lastUpdateMillis = millis();
+  // WiFiManager::getInstance().asyncConnectWithSavedCredentials([](bool
+  // success) {
+  //   if (!success) {
+  //     Serial.println("❌ Failed to connect to Wi-Fi for MAWAQIT fetch.");
+  //     isFetching = false;
+  //     Serial.println("Resume main task, will retry later...");
+  //     executeMainTask();
+  //     return;
+  //   }
+  //   Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
+  //   MAWAQITManager::getInstance().setApiKey(
+  //       "86ed48fd-691e-4370-a9bf-ae74f788ed54");
+  //   MAWAQITManager::getInstance().asyncFetchPrayerTimes(
+  //       "f9a51508-05b7-4324-a7e8-4acbc2893c02",
+  //       [](bool success, const char *path) {
+  //         isFetching = false;
+  //         lastUpdateMillis = millis();
 
-          if (success) {
-            Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
-            splitCalendarJson(MOSQUE_FILE);
-            splitCalendarJson(MOSQUE_FILE, true);
-          } else {
-            Serial.println("⚠️ Failed to fetch valid data after retries.");
-          }
-          // ✅ Once done, resume main task (like sleep)
-          executeMainTask();
-        });
-  });
+  //         if (success) {
+  //           Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
+  //           splitCalendarJson(MOSQUE_FILE);
+  //           splitCalendarJson(MOSQUE_FILE, true);
+  //         } else {
+  //           Serial.println("⚠️ Failed to fetch valid data after retries.");
+  //         }
+  //         // ✅ Once done, resume main task (like sleep)
+  //         executeMainTask();
+  //       });
+  // });
 }
 
-void onWifiNetworksFound(const std::vector<ScanResult> &results) {
-  Serial.println("📋 Wi-Fi networks:");
-  String json = "[";
-  for (size_t i = 0; i < results.size(); ++i) {
-    const auto &net = results[i];
-    String displaySSID = net.ssid.substring(0, 25);
-    const char *security = net.secured ? "secured" : "open";
-
-    // ✅ Print nicely formatted output
-    Serial.printf("   📶 %-25s %5ddBm  %s\n", displaySSID.c_str(), net.rssi,
-                  security);
-
-    // ✅ Add to JSON
-    json += "{";
-    json += "\"ssid\":\"" + displaySSID + "\",";
-    json += "\"rssi\":" + String(net.rssi) + ",";
-    json += "\"secured\":" + String(net.secured ? "true" : "false");
-    json += "}";
-
-    if (i < results.size() - 1) {
-      json += ",";
-    }
-  }
-  json += "]";
-
-  // ✅ Send it over BLE
-  BLEManager::getInstance().sendBLEData(json);
-}
-void onBLENotificationEnabled() {
-  Serial.println("🔔 BLE notification enabled — main.cpp was notified!");
-  WiFiManager &wifi = WiFiManager::getInstance();
-  wifi.asyncScanNetworks(onWifiNetworksFound);
-}
-void onWiFiConnected(bool success) {
-  if (success) {
-    Serial.println("🎉 Wi‑Fi connected — syncing time...");
-
-    RTCManager &rtc = RTCManager::getInstance();
-    bool timeIsSynced = rtc.syncTimeFromNTPWithOffset(3, 10000);
-    if (timeIsSynced) {
-      Serial.println("✅ Time synced successfully");
-    } else {
-      Serial.println("❌ Failed to sync time");
-    }
-    RTCManager::getInstance().printTime();
-
-    executeMainTask();
-
-  } else {
-    Serial.println("😓 Failed to connect to Wi‑Fi.");
-  }
-}
-void onJsonReceivedCallback(const String &json) {
-  Serial.println("📩 Received JSON over BLE: " + json);
-  WiFiManager &wifi = WiFiManager::getInstance();
-
-  StaticJsonDocument<256> doc;
-  DeserializationError err = deserializeJson(doc, json);
-  if (err) {
-    Serial.println("❌ Invalid JSON format");
-    return;
-  }
-
-  if (doc.containsKey("ssid")) {
-    String ssid = doc["ssid"];
-    String password = doc["password"];
-    wifi.asyncConnect(ssid.c_str(), password.c_str(), onWiFiConnected);
-  }
-}
 void setup() {
   Serial.begin(115200);
   delay(500);
@@ -233,11 +234,11 @@ void setup() {
     String wifiJsonString = readJsonFile(WIFI_CRED_FILE);
     if (wifiJsonString.isEmpty() || wifiJsonString == "{}") {
       Serial.println("⚠️ No valid Wi-Fi credentials found.");
-      BLEManager &ble = BLEManager::getInstance();
-      ble.setupBLE();
-      ble.startAdvertising();
-      ble.setNotificationEnabledCallback(onBLENotificationEnabled);
-      ble.setJsonReceivedCallback(onJsonReceivedCallback);
+      Serial.println("🔔 Turning on BLE...");
+      BLEManager::getInstance().setupBLE();
+      // ble.startAdvertising();
+      // ble.setNotificationEnabledCallback(onBLENotificationEnabled);
+      // ble.setJsonReceivedCallback(onJsonReceivedCallback);
       return;
     }
     DynamicJsonDocument doc(256);
@@ -251,7 +252,28 @@ void setup() {
       String ssid = doc["ssid"].as<String>();
       String password = doc["password"].as<String>();
       Serial.println("📂 Read JSON: " + wifiJsonString);
-      wifi.asyncConnect(ssid.c_str(), password.c_str(), onWiFiConnected);
+      if (ssid.isEmpty() || password.isEmpty()) {
+        Serial.println("⚠️ Incomplete Wi-Fi credentials.");
+        Serial.println("🔔 Turning on BLE...");
+        BLEManager::getInstance().setupBLE();
+        return;
+      }
+      // wifi.asyncConnect(ssid.c_str(), password.c_str(), [](bool success) {
+      //   if (success) {
+      //     Serial.println("🎉 Wi‑Fi connected — syncing time...");
+      //     RTCManager &rtc = RTCManager::getInstance();
+      //     bool timeIsSynced = rtc.syncTimeFromNTPWithOffset(3, 10000);
+      //     if (timeIsSynced) {
+      //       Serial.println("✅ Time synced successfully");
+      //     } else {
+      //       Serial.println("❌ Failed to sync time");
+      //     }
+      //     RTCManager::getInstance().printTime();
+      //   } else {
+      //     Serial.println("🔔 Turning on BLE...");
+      //     BLEManager::getInstance().setupBLE();
+      //   }
+      // });
       return;
     }
   }
@@ -268,4 +290,4 @@ void setup() {
   executeMainTask();
 }
 
-void loop() { vTaskDelay(1000 / portTICK_PERIOD_MS); }
+void loop() { vTaskDelay(100 / portTICK_PERIOD_MS); }
