@@ -98,6 +98,7 @@ void executeMainTask() {
 void fetchPrayerTimesIfDue() {
   Serial.println("📡 Fetching prayer times from MAWAQIT...");
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
+  // Add BLE to advertise
   WiFiManager::getInstance().onWifiConnectedCallback([]() {
     Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
     MAWAQITManager::getInstance().setApiKey(
