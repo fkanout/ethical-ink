@@ -99,6 +99,11 @@ void fetchPrayerTimesIfDue() {
   Serial.println("📡 Fetching prayer times from MAWAQIT...");
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
   // Add BLE to advertise
+  WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
+    Serial.println(
+        "❌ Failed to connect to Wi-Fi to fetch prayer times if due");
+    state = ADVERTISING_BLE;
+  });
   WiFiManager::getInstance().onWifiConnectedCallback([]() {
     Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
     MAWAQITManager::getInstance().setApiKey(

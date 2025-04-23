@@ -47,7 +47,8 @@ void MAWAQITManager::fetchTask(void *parameter) {
   Serial.printf("🌐 Fetching from: %s\n", url.c_str());
 
   WiFiClientSecure client;
-  client.setInsecure(); // For development; install root CA for production
+  client.setInsecure();
+  client.setTimeout(10000);
 
   HTTPClient https;
   if (!https.begin(client, url)) {
