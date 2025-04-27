@@ -158,7 +158,6 @@ PrayerTimeInfo CalendarManager::getNextPrayerTimeForToday(int month, int day,
   safeCopyPrayer(rtcData.IQAMA_Asr, todayIqamaTime.iqamaTimes, 2);
   safeCopyPrayer(rtcData.IQAMA_Maghrib, todayIqamaTime.iqamaTimes, 3);
   safeCopyPrayer(rtcData.IQAMA_Isha, todayIqamaTime.iqamaTimes, 4);
-  AppStateManager::save();
 
   rtcData.day = day;
   rtcData.month = month;

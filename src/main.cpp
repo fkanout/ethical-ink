@@ -13,7 +13,9 @@
 CalendarManager calendarManager;
 unsigned int sleepDuration = 60; // in seconds, default fallback
 
-const unsigned long updateInterval = 6UL * 60UL * 60UL * 1000UL; // 6 hours
+// const unsigned long updateInterval = 6UL * 60UL * 60UL * 1000UL; // 6 hours
+const unsigned long updateInterval = 3UL * 60UL * 1000UL; // 3 min
+// const unsigned long updateInterval = 2UL * 60UL * 1000UL; // 2 min
 bool isFetching = false;
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
@@ -294,13 +296,18 @@ void handleShouldFetchMosqueData() {
     return;
   }
 
+  // Round to nearest minute
+  unsigned long nowAligned = now - (now % 60);
+  unsigned long lastUpdateAligned =
+      rtcData.lastUpdateMillis - (rtcData.lastUpdateMillis % 60);
+
   if (rtcData.lastUpdateMillis == 0) {
     Serial.println("🆕 No previous update. Fetching mosque data...");
     fetchPrayerTimesIfDue();
     return;
   }
 
-  unsigned long elapsed = now - rtcData.lastUpdateMillis;
+  unsigned long elapsed = nowAligned - lastUpdateAligned;
   unsigned long elapsedHours = elapsed / 3600;
   unsigned long elapsedMinutes = (elapsed % 3600) / 60;
 

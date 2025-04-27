@@ -50,18 +50,19 @@ String readJsonFile(const String &jsonPath) {
 }
 
 bool writeJsonFile(const String &filename, const String &jsonData) {
-  Serial.printf("💾 Writing JSON to: %s\n", filename.c_str());
+  Serial.printf("\r💾 Writing JSON to: %s", filename.c_str());
 
   File file = SPIFFS.open(filename, "w");
   if (!file) {
-    Serial.println("❌ Failed to open file for writing!");
+    Serial.printf("\r❌ Failed to open file for writing: %s\n",
+                  filename.c_str());
     return false;
   }
 
   file.print(jsonData);
   file.close();
 
-  Serial.println("✅ JSON saved successfully.");
+  Serial.printf("\r✅ JSON saved successfully: %s\n", filename.c_str());
   return true;
 }
 
@@ -93,7 +94,6 @@ bool splitCalendarJson(const String &rawJsonPath, const bool &isIqama) {
 
   for (int month = 0; month < calendar.size(); month++) {
     if (calendar[month].is<JsonObject>()) {
-
       DynamicJsonDocument monthDoc(2048);
       monthDoc["month"] = month + 1;
       monthDoc[jsonKey] = calendar[month];
@@ -102,16 +102,17 @@ bool splitCalendarJson(const String &rawJsonPath, const bool &isIqama) {
 
       String filename = fileName + String(month + 1) + ".json";
       if (writeJsonFile(filename, monthJson)) {
-        Serial.printf("✅ Saved: %s\n", filename.c_str());
-        // Serial.println(monthJson);
+        Serial.printf("\r✅ Saved: %s", filename.c_str());
       } else {
-        Serial.printf("❌ Failed to save: %s\n", filename.c_str());
+        Serial.printf("\r❌ Failed to save: %s",
+                      filename.c_str()); // Also same line
         return false;
       }
     } else {
-      Serial.printf("⚠️ Month %d not found or invalid!\n", month + 1);
+      Serial.printf("\r⚠️ Month %d not found or invalid!", month + 1);
     }
   }
+  Serial.println();
 
   return true;
 }
