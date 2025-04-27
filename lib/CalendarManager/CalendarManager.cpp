@@ -118,9 +118,13 @@ PrayerTimeInfo CalendarManager::getNextPrayerTimeForToday(int month, int day,
                                                           int currentHour,
                                                           int currentMinute,
                                                           bool fetchTomorrow) {
+
   TodayPrayerTimes todayPrayerTime = fetchTodayPrayerTimes(month, day);
   IqamaTimes todayIqamaTime = fetchTodayIqamaTimes(month, day);
   PrayerTimeInfo result;
+  result.day = day;
+  result.month = month;
+  result.fetchTomorrow = fetchTomorrow;
   result.prayerTimes = todayPrayerTime.prayerTimes;
   result.prayerTimesISODate =
       todayPrayerTime.prayerTimesISODate;        // Default to 0

@@ -19,6 +19,9 @@ struct PrayerTimeInfo {
   std::vector<String> prayerTimes;
   std::vector<String> prayerTimesISODate;
   std::vector<String> iqamaTimes;
+  int day;
+  int month;
+  bool fetchTomorrow = false;
   String nextPrayerMinAndHour;
 };
 class CalendarManager {

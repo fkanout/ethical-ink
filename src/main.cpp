@@ -1,5 +1,6 @@
 
 
+#include "AppStateManager.h"
 #include "SPIFFSHelper.h"
 #include "WiFiManager.h"
 #include <AppState.h>
@@ -9,14 +10,34 @@
 #include <CalendarManager.h>
 #include <MAWAQITManager.h>
 #include <RTCManager.h>
-
 CalendarManager calendarManager;
 unsigned int sleepDuration = 60; // in seconds, default fallback
-RTC_DATA_ATTR time_t lastUpdateMillis = 0;
+
 const unsigned long updateInterval = 6UL * 60UL * 60UL * 1000UL; // 6 hours
 bool isFetching = false;
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
+
+void safeCopyPrayer(char *destination, const std::vector<String> &times,
+                    size_t index) {
+  if (index < times.size()) {
+    strncpy(destination, times[index].c_str(), 6);
+    destination[5] = '\0';
+  } else {
+    strncpy(destination, "00:00", 6); // fallback
+    destination[5] = '\0';
+  }
+}
+
+void printPrayerTimesFromRTC() {
+  Serial.println("📋 Stored prayer and iqama times from RTC:");
+  Serial.printf("  ⏰ %s  %s\n", rtcData.FAJR, rtcData.IQAMA_Fajr);
+  Serial.printf("  ⏰ %s  %s\n", rtcData.DHUHR, rtcData.IQAMA_Dhuhr);
+  Serial.printf("  ⏰ %s  %s\n", rtcData.ASR, rtcData.IQAMA_Asr);
+  Serial.printf("  ⏰ %s  %s\n", rtcData.MAGHRIB, rtcData.IQAMA_Maghrib);
+  Serial.printf("  ⏰ %s  %s\n", rtcData.ISHA, rtcData.IQAMA_Isha);
+}
+
 Countdown calculateCountdownToNextPrayer(const String &nextPrayer,
                                          const struct tm &now) {
   int currentSeconds = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec;
@@ -76,14 +97,24 @@ void executeMainTask() {
       prayerTimeInfo.nextPrayerMinAndHour, timeinfo);
 
   String sunrise = prayerTimeInfo.prayerTimes[1];
-  prayerTimeInfo.prayerTimes.erase(prayerTimeInfo.prayerTimes.begin() + 1);
+
+  safeCopyPrayer(rtcData.FAJR, prayerTimeInfo.prayerTimes, 0);
+  safeCopyPrayer(rtcData.SUNRISE, prayerTimeInfo.prayerTimes, 1);
+  safeCopyPrayer(rtcData.DHUHR, prayerTimeInfo.prayerTimes, 2);
+  safeCopyPrayer(rtcData.ASR, prayerTimeInfo.prayerTimes, 3);
+  safeCopyPrayer(rtcData.MAGHRIB, prayerTimeInfo.prayerTimes, 4);
+  safeCopyPrayer(rtcData.ISHA, prayerTimeInfo.prayerTimes, 5);
+
+  safeCopyPrayer(rtcData.IQAMA_Fajr, prayerTimeInfo.iqamaTimes, 0);
+  safeCopyPrayer(rtcData.IQAMA_Dhuhr, prayerTimeInfo.iqamaTimes, 1);
+  safeCopyPrayer(rtcData.IQAMA_Asr, prayerTimeInfo.iqamaTimes, 2);
+  safeCopyPrayer(rtcData.IQAMA_Maghrib, prayerTimeInfo.iqamaTimes, 3);
+  safeCopyPrayer(rtcData.IQAMA_Isha, prayerTimeInfo.iqamaTimes, 4);
+
+  AppStateManager::save();
 
   Serial.println("---------------------------");
-  for (size_t i = 0; i < prayerTimeInfo.prayerTimes.size(); ++i) {
-    const String &prayer = prayerTimeInfo.prayerTimes[i];
-    const String &iqama = prayerTimeInfo.iqamaTimes[i];
-    Serial.printf("  ⏰ %s  %s\n", prayer.c_str(), iqama.c_str());
-  }
+  printPrayerTimesFromRTC();
   Serial.printf("⏳ Next prayer in %02d:%02d\n", countdown.hours,
                 countdown.minutes);
   Serial.println("🔔 Next prayer: " + prayerTimeInfo.nextPrayerMinAndHour);
@@ -115,7 +146,8 @@ void fetchPrayerTimesIfDue() {
             Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
             splitCalendarJson(MOSQUE_FILE);
             splitCalendarJson(MOSQUE_FILE, true);
-            lastUpdateMillis = RTCManager::getInstance().getEpochTime();
+            rtcData.lastUpdateMillis = RTCManager::getInstance().getEpochTime();
+            AppStateManager::save();
             state = RUNNING_MAIN_TASK;
 
           } else {
@@ -138,6 +170,7 @@ void handleBooting() {
     state = FETAL_ERROR;
   }
   Serial.println("✅ SPIFFS mounted successfully");
+  AppStateManager::load(); // ✅ load RTC memory safely
   state = CHECKING_TIME;
 }
 
@@ -279,13 +312,13 @@ void handleShouldFetchMosqueData() {
     return;
   }
 
-  if (lastUpdateMillis == 0) {
+  if (rtcData.lastUpdateMillis == 0) {
     Serial.println("🆕 No previous update. Fetching mosque data...");
     fetchPrayerTimesIfDue();
     return;
   }
 
-  unsigned long elapsed = now - lastUpdateMillis;
+  unsigned long elapsed = now - rtcData.lastUpdateMillis;
   unsigned long elapsedHours = elapsed / 3600;
   unsigned long elapsedMinutes = (elapsed % 3600) / 60;
 
