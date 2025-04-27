@@ -6,7 +6,7 @@
 #include <functional>
 #include <vector>
 
-#define WIFI_MAX_RETRIES 5
+#define WIFI_MAX_RETRIES 3
 
 struct ScanResult {
   String ssid;

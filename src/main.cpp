@@ -113,11 +113,14 @@ void executeMainTask() {
 void fetchPrayerTimesIfDue() {
   Serial.println("📡 Fetching prayer times from MAWAQIT...");
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
-  // Add BLE to advertise
+
   WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
     Serial.println(
         "❌ Failed to connect to Wi-Fi to fetch prayer times if due");
-    state = ADVERTISING_BLE;
+    // Track this state to show in the UI and stop keeping the device awake each
+    // time
+
+    state = SLEEPING;
   });
   WiFiManager::getInstance().onWifiConnectedCallback([]() {
     Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
@@ -275,6 +278,19 @@ void handleConnectingWifi() {
 }
 
 void handleSleeping() {
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    int currentSecond = timeinfo.tm_sec;
+    sleepDuration = 60 - currentSecond;
+    if (sleepDuration == 60) {
+      sleepDuration = 0; // edge case
+    }
+  } else {
+    Serial.println(
+        "⚠️ Failed to get time for sleep alignment. Using 60s fallback.");
+    sleepDuration = 60;
+  }
+
   Serial.printf("💤 Sleeping for %d seconds to align with full minute...\n",
                 sleepDuration);
   esp_sleep_enable_timer_wakeup(sleepDuration * 1000000ULL);
