@@ -24,6 +24,11 @@ struct RTCData {
   char SUNRISE[6] = "00:00";
 
   bool isTomorrowFetched = false;
+
+  char nextPrayerMinAndHour[6] = "00:00";
+
+  int day = 0;
+  int month = 0;
 };
 
 extern RTCData rtcData;

@@ -1,9 +1,20 @@
 #include "CalendarManager.h"
 #include "AppState.h"
+#include "AppStateManager.h"
 #include <SPIFFS.h>
 #include <vector>
-CalendarManager::CalendarManager() : currentMonth(0), currentDay(0) {}
 
+CalendarManager::CalendarManager() : currentMonth(0), currentDay(0) {}
+void safeCopyPrayer(char *destination, const std::vector<String> &times,
+                    size_t index) {
+  if (index < times.size()) {
+    strncpy(destination, times[index].c_str(), 6);
+    destination[5] = '\0';
+  } else {
+    strncpy(destination, "00:00", 6); // fallback
+    destination[5] = '\0';
+  }
+}
 String CalendarManager::getMonthFilePath(int month, bool isIqama) {
   if (isIqama) {
     return IQAMA_TIME_FILE_NAME + String(month) + ".json";
@@ -118,24 +129,58 @@ PrayerTimeInfo CalendarManager::getNextPrayerTimeForToday(int month, int day,
                                                           int currentHour,
                                                           int currentMinute,
                                                           bool fetchTomorrow) {
+  PrayerTimeInfo result;
+  if (rtcData.day != 0 & rtcData.day == day &&
+      rtcData.month != 0 & rtcData.month == month) {
+    Serial.println("📅 Using cached prayer times from RTC");
+    result.prayerTimes = {rtcData.FAJR, rtcData.SUNRISE, rtcData.DHUHR,
+                          rtcData.ASR,  rtcData.MAGHRIB, rtcData.ISHA};
+    result.iqamaTimes = {rtcData.IQAMA_Fajr, rtcData.IQAMA_Dhuhr,
+                         rtcData.IQAMA_Asr, rtcData.IQAMA_Maghrib,
+                         rtcData.IQAMA_Isha};
 
+    result.nextPrayerMinAndHour = rtcData.nextPrayerMinAndHour;
+    return result;
+  }
+  Serial.println("🔄 Fetching prayer times for month: " + String(month) +
+                 ", day: " + String(day));
   TodayPrayerTimes todayPrayerTime = fetchTodayPrayerTimes(month, day);
   IqamaTimes todayIqamaTime = fetchTodayIqamaTimes(month, day);
-  PrayerTimeInfo result;
-  result.day = day;
-  result.month = month;
-  result.fetchTomorrow = fetchTomorrow;
+  safeCopyPrayer(rtcData.FAJR, todayPrayerTime.prayerTimes, 0);
+  safeCopyPrayer(rtcData.SUNRISE, todayPrayerTime.prayerTimes, 1);
+  safeCopyPrayer(rtcData.DHUHR, todayPrayerTime.prayerTimes, 2);
+  safeCopyPrayer(rtcData.ASR, todayPrayerTime.prayerTimes, 3);
+  safeCopyPrayer(rtcData.MAGHRIB, todayPrayerTime.prayerTimes, 4);
+  safeCopyPrayer(rtcData.ISHA, todayPrayerTime.prayerTimes, 5);
+
+  safeCopyPrayer(rtcData.IQAMA_Fajr, todayIqamaTime.iqamaTimes, 0);
+  safeCopyPrayer(rtcData.IQAMA_Dhuhr, todayIqamaTime.iqamaTimes, 1);
+  safeCopyPrayer(rtcData.IQAMA_Asr, todayIqamaTime.iqamaTimes, 2);
+  safeCopyPrayer(rtcData.IQAMA_Maghrib, todayIqamaTime.iqamaTimes, 3);
+  safeCopyPrayer(rtcData.IQAMA_Isha, todayIqamaTime.iqamaTimes, 4);
+  AppStateManager::save();
+
+  rtcData.day = day;
+  rtcData.month = month;
+
   result.prayerTimes = todayPrayerTime.prayerTimes;
-  result.prayerTimesISODate =
-      todayPrayerTime.prayerTimesISODate;        // Default to 0
-  result.iqamaTimes = todayIqamaTime.iqamaTimes; // Default to 0
+  result.prayerTimesISODate = todayPrayerTime.prayerTimesISODate;
+  result.iqamaTimes = todayIqamaTime.iqamaTimes;
+
   if (fetchTomorrow) {
     result.nextPrayerMinAndHour = todayPrayerTime.prayerTimes[0];
+    safeCopyPrayer(rtcData.nextPrayerMinAndHour, result.prayerTimes, 0);
+    AppStateManager::save();
     return result;
   }
   for (const String &time : todayPrayerTime.prayerTimes) {
     if (isLaterThan(currentHour, currentMinute, time)) {
       result.nextPrayerMinAndHour = time;
+      strncpy(rtcData.nextPrayerMinAndHour, time.c_str(),
+              sizeof(rtcData.nextPrayerMinAndHour) - 1);
+      rtcData.nextPrayerMinAndHour[sizeof(rtcData.nextPrayerMinAndHour) - 1] =
+          '\0';
+      AppStateManager::save();
       return result;
     }
   }

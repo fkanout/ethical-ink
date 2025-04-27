@@ -21,9 +21,13 @@ void AppStateManager::load() {
     strncpy(rtcData.ISHA, "00:00", sizeof(rtcData.ISHA));
     strncpy(rtcData.IQAMA_Isha, "00:00", sizeof(rtcData.IQAMA_Isha));
     strncpy(rtcData.SUNRISE, "00:00", sizeof(rtcData.SUNRISE));
+    strncpy(rtcData.nextPrayerMinAndHour, "00:00",
+            sizeof(rtcData.nextPrayerMinAndHour));
 
     rtcData.isTomorrowFetched = false;
     rtcData.lastUpdateMillis = 0;
+    rtcData.day = 0;
+    rtcData.month = 0;
     rtcData.rtcMagic = RTC_MAGIC_VALID;
   } else {
     Serial.println("✅ RTC memory valid, loaded");

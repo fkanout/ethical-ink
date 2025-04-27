@@ -18,17 +18,6 @@ bool isFetching = false;
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
 
-void safeCopyPrayer(char *destination, const std::vector<String> &times,
-                    size_t index) {
-  if (index < times.size()) {
-    strncpy(destination, times[index].c_str(), 6);
-    destination[5] = '\0';
-  } else {
-    strncpy(destination, "00:00", 6); // fallback
-    destination[5] = '\0';
-  }
-}
-
 void printPrayerTimesFromRTC() {
   Serial.println("📋 Stored prayer and iqama times from RTC:");
   Serial.printf("  ⏰ %s  %s\n", rtcData.FAJR, rtcData.IQAMA_Fajr);
@@ -76,10 +65,12 @@ void executeMainTask() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
     Serial.println("❌ Failed to get time.");
+    // TODO: Handle this case
     return;
   }
 
   int currentSecond = timeinfo.tm_sec;
+
   PrayerTimeInfo prayerTimeInfo = calendarManager.getNextPrayerTimeForToday(
       timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min);
 
@@ -98,23 +89,14 @@ void executeMainTask() {
 
   String sunrise = prayerTimeInfo.prayerTimes[1];
 
-  safeCopyPrayer(rtcData.FAJR, prayerTimeInfo.prayerTimes, 0);
-  safeCopyPrayer(rtcData.SUNRISE, prayerTimeInfo.prayerTimes, 1);
-  safeCopyPrayer(rtcData.DHUHR, prayerTimeInfo.prayerTimes, 2);
-  safeCopyPrayer(rtcData.ASR, prayerTimeInfo.prayerTimes, 3);
-  safeCopyPrayer(rtcData.MAGHRIB, prayerTimeInfo.prayerTimes, 4);
-  safeCopyPrayer(rtcData.ISHA, prayerTimeInfo.prayerTimes, 5);
-
-  safeCopyPrayer(rtcData.IQAMA_Fajr, prayerTimeInfo.iqamaTimes, 0);
-  safeCopyPrayer(rtcData.IQAMA_Dhuhr, prayerTimeInfo.iqamaTimes, 1);
-  safeCopyPrayer(rtcData.IQAMA_Asr, prayerTimeInfo.iqamaTimes, 2);
-  safeCopyPrayer(rtcData.IQAMA_Maghrib, prayerTimeInfo.iqamaTimes, 3);
-  safeCopyPrayer(rtcData.IQAMA_Isha, prayerTimeInfo.iqamaTimes, 4);
-
-  AppStateManager::save();
+  prayerTimeInfo.prayerTimes.erase(prayerTimeInfo.prayerTimes.begin() + 1);
 
   Serial.println("---------------------------");
-  printPrayerTimesFromRTC();
+  for (size_t i = 0; i < prayerTimeInfo.prayerTimes.size(); ++i) {
+    const String &prayer = prayerTimeInfo.prayerTimes[i];
+    const String &iqama = prayerTimeInfo.iqamaTimes[i];
+    Serial.printf("  ⏰ %s  %s\n", prayer.c_str(), iqama.c_str());
+  }
   Serial.printf("⏳ Next prayer in %02d:%02d\n", countdown.hours,
                 countdown.minutes);
   Serial.println("🔔 Next prayer: " + prayerTimeInfo.nextPrayerMinAndHour);
@@ -170,7 +152,7 @@ void handleBooting() {
     state = FETAL_ERROR;
   }
   Serial.println("✅ SPIFFS mounted successfully");
-  AppStateManager::load(); // ✅ load RTC memory safely
+  AppStateManager::load();
   state = CHECKING_TIME;
 }
 
