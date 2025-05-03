@@ -6,26 +6,33 @@ struct RTCData {
 
   time_t lastUpdateMillis = 0;
 
-  char FAJR[6] = "00:00";
-  char IQAMA_Fajr[6] = "00:00";
+  char TODAY_FAJR[6] = "00:00";
+  char TODAY_IQAMA_FAJR[6] = "00:00";
+  char NEXT_DAY_FAJR[6] = "00:00";
+  char NEXT_DAY_IQAMA_FAJR[6] = "00:00";
 
-  char DHUHR[6] = "00:00";
-  char IQAMA_Dhuhr[6] = "00:00";
+  char TODAY_DHUHR[6] = "00:00";
+  char TODAY_IQAMA_DHUHR[6] = "00:00";
+  char NEXT_DAY_DHUHR[6] = "00:00";
+  char NEXT_DAY_IQAMA_DHUHR[6] = "00:00";
 
-  char ASR[6] = "00:00";
-  char IQAMA_Asr[6] = "00:00";
+  char TODAY_ASR[6] = "00:00";
+  char TODAY_IQAMA_ASR[6] = "00:00";
+  char NEXT_DAY_ASR[6] = "00:00";
+  char NEXT_DAY_IQAMA_ASR[6] = "00:00";
 
-  char MAGHRIB[6] = "00:00";
-  char IQAMA_Maghrib[6] = "00:00";
+  char TODAY_MAGHRIB[6] = "00:00";
+  char TODAY_IQAMA_MAGHRIB[6] = "00:00";
+  char NEXT_DAY_MAGHRIB[6] = "00:00";
+  char NEXT_DAY_IQAMA_MAGHRIB[6] = "00:00";
 
-  char ISHA[6] = "00:00";
-  char IQAMA_Isha[6] = "00:00";
+  char TODAY_ISHA[6] = "00:00";
+  char TODAY_IQAMA_ISHA[6] = "00:00";
+  char NEXT_DAY_ISHA[6] = "00:00";
+  char NEXT_DAY_IQAMA_ISHA[6] = "00:00";
 
-  char SUNRISE[6] = "00:00";
-
-  bool isTomorrowFetched = false;
-
-  char nextPrayerMinAndHour[6] = "00:00";
+  char TODAY_SUNRISE[6] = "00:00";
+  char NEXT_DAY_SUNRISE[6] = "00:00";
 
   int day = 0;
   int month = 0;

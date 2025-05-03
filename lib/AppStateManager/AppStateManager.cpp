@@ -10,21 +10,45 @@ void AppStateManager::load() {
     Serial.println("🧹 RTC memory invalid, reinitializing...");
     memset(&rtcData, 0, sizeof(rtcData));
 
-    strncpy(rtcData.FAJR, "00:00", sizeof(rtcData.FAJR));
-    strncpy(rtcData.IQAMA_Fajr, "00:00", sizeof(rtcData.IQAMA_Fajr));
-    strncpy(rtcData.DHUHR, "00:00", sizeof(rtcData.DHUHR));
-    strncpy(rtcData.IQAMA_Dhuhr, "00:00", sizeof(rtcData.IQAMA_Dhuhr));
-    strncpy(rtcData.ASR, "00:00", sizeof(rtcData.ASR));
-    strncpy(rtcData.IQAMA_Asr, "00:00", sizeof(rtcData.IQAMA_Asr));
-    strncpy(rtcData.MAGHRIB, "00:00", sizeof(rtcData.MAGHRIB));
-    strncpy(rtcData.IQAMA_Maghrib, "00:00", sizeof(rtcData.IQAMA_Maghrib));
-    strncpy(rtcData.ISHA, "00:00", sizeof(rtcData.ISHA));
-    strncpy(rtcData.IQAMA_Isha, "00:00", sizeof(rtcData.IQAMA_Isha));
-    strncpy(rtcData.SUNRISE, "00:00", sizeof(rtcData.SUNRISE));
-    strncpy(rtcData.nextPrayerMinAndHour, "00:00",
-            sizeof(rtcData.nextPrayerMinAndHour));
+    strncpy(rtcData.TODAY_FAJR, "00:00", sizeof(rtcData.TODAY_FAJR));
+    strncpy(rtcData.TODAY_IQAMA_FAJR, "00:00",
+            sizeof(rtcData.TODAY_IQAMA_FAJR));
+    strncpy(rtcData.NEXT_DAY_FAJR, "00:00", sizeof(rtcData.NEXT_DAY_FAJR));
+    strncpy(rtcData.NEXT_DAY_IQAMA_FAJR, "00:00",
+            sizeof(rtcData.NEXT_DAY_IQAMA_FAJR));
 
-    rtcData.isTomorrowFetched = false;
+    strncpy(rtcData.TODAY_DHUHR, "00:00", sizeof(rtcData.TODAY_DHUHR));
+    strncpy(rtcData.TODAY_IQAMA_DHUHR, "00:00",
+            sizeof(rtcData.TODAY_IQAMA_DHUHR));
+    strncpy(rtcData.NEXT_DAY_DHUHR, "00:00", sizeof(rtcData.NEXT_DAY_DHUHR));
+    strncpy(rtcData.NEXT_DAY_IQAMA_DHUHR, "00:00",
+            sizeof(rtcData.NEXT_DAY_IQAMA_DHUHR));
+
+    strncpy(rtcData.TODAY_ASR, "00:00", sizeof(rtcData.TODAY_ASR));
+    strncpy(rtcData.TODAY_IQAMA_ASR, "00:00", sizeof(rtcData.TODAY_IQAMA_ASR));
+    strncpy(rtcData.NEXT_DAY_ASR, "00:00", sizeof(rtcData.NEXT_DAY_ASR));
+    strncpy(rtcData.NEXT_DAY_IQAMA_ASR, "00:00",
+            sizeof(rtcData.NEXT_DAY_IQAMA_ASR));
+
+    strncpy(rtcData.TODAY_MAGHRIB, "00:00", sizeof(rtcData.TODAY_MAGHRIB));
+    strncpy(rtcData.TODAY_IQAMA_MAGHRIB, "00:00",
+            sizeof(rtcData.TODAY_IQAMA_MAGHRIB));
+    strncpy(rtcData.NEXT_DAY_MAGHRIB, "00:00",
+            sizeof(rtcData.NEXT_DAY_MAGHRIB));
+    strncpy(rtcData.NEXT_DAY_IQAMA_MAGHRIB, "00:00",
+            sizeof(rtcData.NEXT_DAY_IQAMA_MAGHRIB));
+
+    strncpy(rtcData.TODAY_ISHA, "00:00", sizeof(rtcData.TODAY_ISHA));
+    strncpy(rtcData.TODAY_IQAMA_ISHA, "00:00",
+            sizeof(rtcData.TODAY_IQAMA_ISHA));
+    strncpy(rtcData.NEXT_DAY_ISHA, "00:00", sizeof(rtcData.NEXT_DAY_ISHA));
+    strncpy(rtcData.NEXT_DAY_IQAMA_ISHA, "00:00",
+            sizeof(rtcData.NEXT_DAY_IQAMA_ISHA));
+
+    strncpy(rtcData.TODAY_SUNRISE, "00:00", sizeof(rtcData.TODAY_SUNRISE));
+    strncpy(rtcData.NEXT_DAY_SUNRISE, "00:00",
+            sizeof(rtcData.NEXT_DAY_SUNRISE));
+
     rtcData.lastUpdateMillis = 0;
     rtcData.day = 0;
     rtcData.month = 0;

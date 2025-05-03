@@ -12,22 +12,15 @@
 #include <RTCManager.h>
 CalendarManager calendarManager;
 unsigned int sleepDuration = 60; // in seconds, default fallback
+const char *PRAYER_NAMES[] = {"Fajr", "Sunrise", "Dhuhr",
+                              "Asr",  "Maghrib", "Isha"};
 
-// const unsigned long updateInterval = 6UL * 60UL * 60UL * 1000UL; // 6 hours
-const unsigned long updateInterval = 3UL * 60UL * 1000UL; // 3 min
+const unsigned long updateInterval = 6UL * 60UL * 60UL * 1000UL; // 6 hours
+// const unsigned long updateInterval = 3UL * 60UL * 1000UL; // 3 min
 // const unsigned long updateInterval = 2UL * 60UL * 1000UL; // 2 min
 bool isFetching = false;
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
-
-void printPrayerTimesFromRTC() {
-  Serial.println("📋 Stored prayer and iqama times from RTC:");
-  Serial.printf("  ⏰ %s  %s\n", rtcData.FAJR, rtcData.IQAMA_Fajr);
-  Serial.printf("  ⏰ %s  %s\n", rtcData.DHUHR, rtcData.IQAMA_Dhuhr);
-  Serial.printf("  ⏰ %s  %s\n", rtcData.ASR, rtcData.IQAMA_Asr);
-  Serial.printf("  ⏰ %s  %s\n", rtcData.MAGHRIB, rtcData.IQAMA_Maghrib);
-  Serial.printf("  ⏰ %s  %s\n", rtcData.ISHA, rtcData.IQAMA_Isha);
-}
 
 Countdown calculateCountdownToNextPrayer(const String &nextPrayer,
                                          const struct tm &now) {
@@ -59,6 +52,17 @@ Countdown calculateCountdownToNextPrayer(const String &nextPrayer,
   return result;
 }
 
+bool isLaterThan(int hour, int minute, const String &timeStr) {
+  int h = timeStr.substring(0, 2).toInt();
+  int m = timeStr.substring(3, 5).toInt();
+
+  if (h > hour)
+    return true;
+  if (h == hour && m > minute)
+    return true;
+  return false;
+}
+
 void executeMainTask() {
   setCpuFrequencyMhz(80);
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
@@ -73,36 +77,117 @@ void executeMainTask() {
 
   int currentSecond = timeinfo.tm_sec;
 
-  PrayerTimeInfo prayerTimeInfo = calendarManager.getNextPrayerTimeForToday(
-      timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min);
-
   Serial.printf("🕒 %02d:%02d:%02d  📅 %02d/%02d/%04d\n", timeinfo.tm_hour,
                 timeinfo.tm_min, currentSecond, timeinfo.tm_mday,
                 timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+  TodayAndNextDayPrayerTimes todayAndNextDayPrayerTimes =
+      calendarManager.fetchTodayAndNextDayPrayerTimes(timeinfo.tm_mon + 1,
+                                                      timeinfo.tm_mday);
 
-  if (prayerTimeInfo.prayerTimes.empty() || prayerTimeInfo.iqamaTimes.empty() ||
-      prayerTimeInfo.prayerTimes.size() < 6) {
-    Serial.println("🐞 Issue with prayer times.");
+  std::vector<String> todayPrayer = todayAndNextDayPrayerTimes.todayPrayerTimes;
+  std::vector<String> todayIqama = todayAndNextDayPrayerTimes.todayIqamaTimes;
+
+  std::vector<String> nextDayPrayer =
+      todayAndNextDayPrayerTimes.nextDayPrayerTimes;
+  std::vector<String> nextDayIqama =
+      todayAndNextDayPrayerTimes.nextDayIqamaTimes;
+
+  bool isShowNextDayPrayers = false;
+  struct NextPrayerInfo {
+    String time;
+    String name;
+  } nextPrayerInfo;
+
+  if (todayPrayer.empty()) {
+    Serial.println("❌ No prayer times found!");
+    return;
+  }
+  if (todayIqama.empty()) {
+    Serial.println("❌ No iqama times found!");
+    return;
+  }
+  if (nextDayPrayer.empty()) {
+    Serial.println("❌ No next day prayer times found!");
+    return;
+  }
+  if (nextDayIqama.empty()) {
+    Serial.println("❌ No next day iqama times found!");
+    return;
+  }
+  for (size_t i = 0; i < todayPrayer.size(); ++i) {
+    if (isLaterThan(timeinfo.tm_hour, timeinfo.tm_min, todayPrayer[i])) {
+      nextPrayerInfo.time = todayPrayer[i];
+      nextPrayerInfo.name = PRAYER_NAMES[i];
+      break;
+    }
+  }
+
+  if (nextPrayerInfo.time.isEmpty() || nextPrayerInfo.name.isEmpty()) {
+    nextPrayerInfo.time = nextDayPrayer[0];
+    nextPrayerInfo.name = PRAYER_NAMES[0];
+    isShowNextDayPrayers = true;
+  }
+
+  if (nextPrayerInfo.time.isEmpty() || nextPrayerInfo.name.isEmpty()) {
+    Serial.println("❌ No next prayer found!");
     return;
   }
 
-  Countdown countdown = calculateCountdownToNextPrayer(
-      prayerTimeInfo.nextPrayerMinAndHour, timeinfo);
+  String FAJR;
+  String SUNRISE;
+  String DHUHR;
+  String ASR;
+  String MAGHRIB;
+  String ISHA;
+  String IQAMA_Fajr;
+  String IQAMA_Dhuhr;
+  String IQAMA_Asr;
+  String IQAMA_Maghrib;
+  String IQAMA_Isha;
 
-  String sunrise = prayerTimeInfo.prayerTimes[1];
+  if (isShowNextDayPrayers) {
+    Serial.println("📅 Next day prayer times:");
+    FAJR = nextDayPrayer[0];
+    SUNRISE = nextDayPrayer[1];
+    DHUHR = nextDayPrayer[2];
+    ASR = nextDayPrayer[3];
+    MAGHRIB = nextDayPrayer[4];
+    ISHA = nextDayPrayer[5];
+    IQAMA_Fajr = nextDayIqama[0];
+    IQAMA_Dhuhr = nextDayIqama[1];
+    IQAMA_Asr = nextDayIqama[2];
+    IQAMA_Maghrib = nextDayIqama[3];
+    IQAMA_Isha = nextDayIqama[4];
+  } else {
+    Serial.println("📅 Today prayer times:");
+    FAJR = todayPrayer[0];
+    SUNRISE = todayPrayer[1];
+    DHUHR = todayPrayer[2];
+    ASR = todayPrayer[3];
+    MAGHRIB = todayPrayer[4];
+    ISHA = todayPrayer[5];
+    IQAMA_Fajr = todayIqama[0];
+    IQAMA_Dhuhr = todayIqama[1];
+    IQAMA_Asr = todayIqama[2];
+    IQAMA_Maghrib = todayIqama[3];
+    IQAMA_Isha = todayIqama[4];
+  }
 
-  prayerTimeInfo.prayerTimes.erase(prayerTimeInfo.prayerTimes.begin() + 1);
+  Countdown countdown =
+      calculateCountdownToNextPrayer(nextPrayerInfo.time, timeinfo);
 
   Serial.println("---------------------------");
-  for (size_t i = 0; i < prayerTimeInfo.prayerTimes.size(); ++i) {
-    const String &prayer = prayerTimeInfo.prayerTimes[i];
-    const String &iqama = prayerTimeInfo.iqamaTimes[i];
-    Serial.printf("  ⏰ %s  %s\n", prayer.c_str(), iqama.c_str());
-  }
-  Serial.printf("⏳ Next prayer in %02d:%02d\n", countdown.hours,
+
+  Serial.printf("  ⏰ %s  %s\n", FAJR.c_str(), IQAMA_Fajr.c_str());
+  Serial.printf("  🌅 %s\n", SUNRISE.c_str());
+  Serial.printf("  ⏰ %s  %s\n", DHUHR.c_str(), IQAMA_Dhuhr.c_str());
+  Serial.printf("  ⏰ %s  %s\n", ASR.c_str(), IQAMA_Asr.c_str());
+  Serial.printf("  ⏰ %s  %s\n", MAGHRIB.c_str(), IQAMA_Maghrib.c_str());
+  Serial.printf("  ⏰ %s  %s\n", ISHA.c_str(), IQAMA_Isha.c_str());
+
+  Serial.printf("  ⏳%s in %02d:%02d\n", nextPrayerInfo.name, countdown.hours,
                 countdown.minutes);
-  Serial.println("🔔 Next prayer: " + prayerTimeInfo.nextPrayerMinAndHour);
-  Serial.println("🌅 Sunrise: " + sunrise);
+
   Serial.println("---------------------------");
 
   sleepDuration = 60 - currentSecond;
@@ -193,6 +278,7 @@ void handleSyncingTime() {
   RTCManager &rtc = RTCManager::getInstance();
   if (rtc.syncTimeFromNTPWithOffset(3, 10000)) {
     Serial.println("✅ Time synced successfully");
+    // rtc.setTimeToSpecificHourAndMinute(22, 0, 5, 2);
     state = RUNNING_MAIN_TASK;
   } else {
     Serial.println("❌ Failed to sync time");
@@ -302,6 +388,7 @@ void handleMainTaskState() {
   executeMainTask();
   state = SHOULD_FETCH_MOSQUE_DATA;
 }
+
 void handleShouldFetchMosqueData() {
   Serial.println("🔄 Checking if mosque data needs to be fetched...");
 
