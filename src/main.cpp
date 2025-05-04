@@ -1,6 +1,7 @@
 
 
 #include "AppStateManager.h"
+#include "EventsManager.h"
 #include "SPIFFSHelper.h"
 #include "WiFiManager.h"
 #include <AppState.h>
@@ -251,7 +252,8 @@ void handleCheckingTime() {
   RTCManager &rtc = RTCManager::getInstance();
   if (rtc.isTimeSynced()) {
     Serial.println("✅ Time synced");
-    state = RUNNING_MAIN_TASK;
+    // state = RUNNING_MAIN_TASK;
+    state = FETCHING_USER_EVENTS;
   } else {
     Serial.println("❌ Time not synced");
     state = CONNECTING_WIFI_WITH_SAVED_CREDENTIALS;
@@ -428,6 +430,41 @@ void handleShouldFetchMosqueData() {
     state = SLEEPING;
   }
 }
+void handleFetchingCalendar() {
+
+  Serial.println("📡 Fetching prayer times from MAWAQIT...");
+  WiFiManager::getInstance().asyncConnectWithSavedCredentials();
+
+  WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
+    Serial.println(
+        "❌ Failed to connect to Wi-Fi to fetch prayer times if due");
+    // Track this state to show in the UI and stop keeping the device awake each
+    // time
+
+    state = RUNNING_MAIN_TASK;
+  });
+  WiFiManager::getInstance().onWifiConnectedCallback([]() {
+    Serial.println("✅ Connected to Wi-Fi to fetch user events.");
+    String accessToken =
+        "ya29.a0AZYkNZiGgnTN3l7pT7L7BbcQnU6MFGlWd-01JM9tRpMbDrAa7HIizDyM_"
+        "urSl2ISv8WtXalwM5mmgaOWRDSDN16GfeSEZMdINVLCQjR7uC0e_"
+        "Df7IDIy8ebZbtojIb9hgPSbVy5vfsq7cUASlZcCqU2NLoo8mKpl8hnklErsaCgYKAR0SAR"
+        "MSFQHGX2MiBBA99JASRv3dWRx7yyec6g0175";
+    EventsManager::getInstance().setAccessToken(accessToken);
+
+    EventsManager::getInstance().asyncFetchEvents(
+        [](bool success, const char *path) {
+          if (success) {
+            Serial.printf("✅ Events saved to %s\n", path);
+            EventsManager::getInstance().listEventsForNextWeek();
+            // You can add logic to parse and display events here
+          } else {
+            Serial.println("⚠️ Calendar fetch failed");
+          }
+          state = RUNNING_MAIN_TASK;
+        });
+  });
+}
 void handleAppState() {
   switch (state) {
   case BOOTING:
@@ -456,6 +493,9 @@ void handleAppState() {
     break;
   case SHOULD_FETCH_MOSQUE_DATA:
     handleShouldFetchMosqueData();
+    break;
+  case FETCHING_USER_EVENTS:
+    handleFetchingCalendar();
     break;
   case SLEEPING:
     handleSleeping();
