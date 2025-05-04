@@ -448,10 +448,11 @@ void fetchUserEvents() {
   WiFiManager::getInstance().onWifiConnectedCallback([]() {
     Serial.println("✅ Connected to Wi-Fi to fetch user events.");
     String accessToken =
-        "ya29.a0AZYkNZhPmw82xd7KUc5HHOkHp0ry6IKMf4kuToG8366lTBXQ1erJWZ-"
-        "KcWDVzCmzo15m20QtKQhPenoKj53J9O47_"
-        "ufDV63qzLG1HPFtlyY1iuAT49acwOT0sOcNrZrIZqBWa0rELri7bzqGdfdnUOlzQ2Qfx7e"
-        "iYK68oz9aaCgYKAUcSARMSFQHGX2MiP2v21kf0TojWgc1RDkzQuw0175";
+        "ya29.a0AZYkNZgcd6d9N5GzdATE3EZ9ssp2J1nYDHgHrKywEEYy7O3-6kJetSSBuifYF_"
+        "CTpLwa9SOJEpoKFk_"
+        "hGmRwvYfeqLj1PpyhvbHRy4aTiZtTUjUkDDutqHrRKefaxj4BOr6yuoSx-"
+        "xizcEoiNphHQNz0ci6EbuCtjG6frLaPaCgYKATkSARMSFQHGX2MiKjV9ydIfVHvXVcOt6P"
+        "l8VA0175";
     EventsManager::getInstance().setAccessToken(accessToken);
     EventsManager::getInstance().asyncFetchEvents(
         [](bool success, const char *path) {

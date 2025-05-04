@@ -26,6 +26,7 @@ void EventsManager::fetchTask(void *parameter) {
     vTaskDelete(nullptr);
     return;
   }
+
   // Build ISO8601 time range: now to now + 7 days
   time_t now = time(nullptr);
   char timeMin[40];
@@ -37,7 +38,6 @@ void EventsManager::fetchTask(void *parameter) {
   strftime(timeMax, sizeof(timeMax), "%Y-%m-%dT%H:%M:%SZ",
            gmtime(&oneWeekLater));
 
-  // Build URL with timeMin and timeMax
   String url =
       "https://www.googleapis.com/calendar/v3/calendars/primary/events?";
   url += "timeMin=" + String(timeMin);
@@ -65,20 +65,41 @@ void EventsManager::fetchTask(void *parameter) {
       String json = https.getString();
       Serial.printf("📦 Received %d bytes\n", json.length());
 
-      StaticJsonDocument<512> doc;
-      DeserializationError error = deserializeJson(doc, json);
+      StaticJsonDocument<16384> sourceDoc;
+      DeserializationError error = deserializeJson(sourceDoc, json);
       if (error) {
         Serial.printf("❌ JSON validation failed: %s\n", error.c_str());
       } else {
-        Serial.println("🔍 Google events JSON content:");
-        Serial.println(json);
+        JsonArray items = sourceDoc["items"].as<JsonArray>();
+        StaticJsonDocument<8192> filteredDoc;
+        JsonArray filtered = filteredDoc.createNestedArray("events");
+
+        for (JsonObject event : items) {
+          const char *type = event["eventType"] | "default";
+          if (strcmp(type, "default") != 0)
+            continue;
+
+          JsonObject dst = filtered.createNestedObject();
+          dst["summary"] = event["summary"] | "(no title)";
+          dst["start"] = event["start"]["dateTime"] | event["start"]["date"];
+          dst["creator"] = event["creator"]["displayName"] |
+                           event["creator"]["email"] | "(unknown)";
+          JsonArray attendees = event["attendees"].as<JsonArray>();
+          for (JsonObject attendee : attendees) {
+            if (attendee["self"] == true) {
+              dst["responseStatus"] = attendee["responseStatus"];
+              break;
+            }
+          }
+        }
+
         File file = SPIFFS.open(EVENTS_JSON_PATH, FILE_WRITE);
         if (!file) {
           Serial.println("❌ Failed to open file for writing");
         } else {
-          file.print(json);
+          serializeJson(filteredDoc, file);
           file.close();
-          Serial.printf("✅ Events JSON saved to %s\n", EVENTS_JSON_PATH);
+          Serial.printf("✅ Filtered events saved to %s\n", EVENTS_JSON_PATH);
           success = true;
         }
       }
@@ -94,34 +115,36 @@ void EventsManager::fetchTask(void *parameter) {
   getInstance().fetchTaskHandle = nullptr;
   vTaskDelete(nullptr);
 }
+
 void EventsManager::listEventsForNextWeek() {
-  File file = SPIFFS.open("/events.json", FILE_READ);
+  File file = SPIFFS.open(EVENTS_JSON_PATH, FILE_READ);
   if (!file) {
     Serial.println("❌ Cannot open events.json");
     return;
   }
 
-  String json = file.readString(); // ← read full content
+  StaticJsonDocument<8192> doc;
+  DeserializationError err = deserializeJson(doc, file);
   file.close();
 
-  StaticJsonDocument<8192> doc;
-  DeserializationError err = deserializeJson(doc, json);
   if (err) {
     Serial.printf("❌ JSON parse error: %s\n", err.c_str());
     return;
   }
 
-  JsonArray items = doc["items"].as<JsonArray>();
-  if (!items || items.size() == 0) {
-    Serial.println("📭 No upcoming events this week");
+  JsonArray events = doc["events"].as<JsonArray>();
+  if (!events || events.size() == 0) {
+    Serial.println("📭 No filtered events this week");
     return;
   }
 
   Serial.println("📅 Events for the next 7 days:");
-  for (JsonObject event : items) {
+  for (JsonObject event : events) {
     const char *summary = event["summary"] | "(no title)";
-    const char *start = event["start"]["dateTime"] |
-                        event["start"]["date"]; // handles all-day events
-    Serial.printf("🔹 %s at %s\n", summary, start);
+    const char *start = event["start"];
+    const char *creator = event["creator"];
+    const char *status = event["responseStatus"] | "unknown";
+    Serial.printf("🔹 %s at %s | Creator: %s | Status: %s\n", summary, start,
+                  creator, status);
   }
 }
