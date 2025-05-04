@@ -49,7 +49,8 @@ void AppStateManager::load() {
     strncpy(rtcData.NEXT_DAY_SUNRISE, "00:00",
             sizeof(rtcData.NEXT_DAY_SUNRISE));
 
-    rtcData.lastUpdateMillis = 0;
+    rtcData.mosqueLastUpdateMillis = 0;
+    rtcData.userEventsUpdateMillis = 0;
     rtcData.day = 0;
     rtcData.month = 0;
     rtcData.rtcMagic = RTC_MAGIC_VALID;

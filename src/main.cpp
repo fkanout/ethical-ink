@@ -16,13 +16,55 @@ unsigned int sleepDuration = 60; // in seconds, default fallback
 const char *PRAYER_NAMES[] = {"Fajr", "Sunrise", "Dhuhr",
                               "Asr",  "Maghrib", "Isha"};
 
-const unsigned long updateInterval = 6UL * 60UL * 60UL * 1000UL; // 6 hours
-// const unsigned long updateInterval = 3UL * 60UL * 1000UL; // 3 min
-// const unsigned long updateInterval = 2UL * 60UL * 1000UL; // 2 min
+const unsigned long mosqueUpdateInterval = 6UL * 60UL * 60UL; // 6 hours
+const unsigned long userEventsUpdateInterval = 10UL * 60UL;   // 10 minutes
 bool isFetching = false;
+
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
 
+bool shouldFetchBasedOnInterval(unsigned long lastUpdateSeconds,
+                                unsigned long intervalSeconds,
+                                const char *label = nullptr) {
+  time_t now = RTCManager::getInstance().getEpochTime();
+  if (now < 100000) {
+    Serial.println("⚠️ Skipping fetch: RTC not synced yet.");
+    return false;
+  }
+
+  // Align to the nearest minute
+  unsigned long nowAligned = now - (now % 60);
+  unsigned long lastAligned = lastUpdateSeconds - (lastUpdateSeconds % 60);
+
+  if (lastUpdateSeconds == 0) {
+    if (label)
+      Serial.printf("🆕 [%s] No previous update. Should fetch.\n", label);
+    return true;
+  }
+
+  unsigned long elapsed = nowAligned - lastAligned;
+
+  if (elapsed >= intervalSeconds) {
+    if (label) {
+      Serial.printf("⏱️ [%s] It's been %lu seconds. Fetching now...\n", label,
+                    elapsed);
+    }
+    return true;
+  } else {
+    if (label) {
+      unsigned long remaining =
+          intervalSeconds > elapsed ? intervalSeconds - elapsed : 0;
+      unsigned long elapsedH = elapsed / 3600;
+      unsigned long elapsedM = (elapsed % 3600) / 60;
+      unsigned long remainingH = remaining / 3600;
+      unsigned long remainingM = (remaining % 3600) / 60;
+      Serial.printf(
+          "🕰️ [%s] Only %luh %lum elapsed. Next fetch in %luh %lum.\n", label,
+          elapsedH, elapsedM, remainingH, remainingM);
+    }
+    return false;
+  }
+}
 Countdown calculateCountdownToNextPrayer(const String &nextPrayer,
                                          const struct tm &now) {
   int currentSeconds = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec;
@@ -147,7 +189,6 @@ void executeMainTask() {
   String IQAMA_Isha;
 
   if (isShowNextDayPrayers) {
-    Serial.println("📅 Next day prayer times:");
     FAJR = nextDayPrayer[0];
     SUNRISE = nextDayPrayer[1];
     DHUHR = nextDayPrayer[2];
@@ -160,7 +201,6 @@ void executeMainTask() {
     IQAMA_Maghrib = nextDayIqama[3];
     IQAMA_Isha = nextDayIqama[4];
   } else {
-    Serial.println("📅 Today prayer times:");
     FAJR = todayPrayer[0];
     SUNRISE = todayPrayer[1];
     DHUHR = todayPrayer[2];
@@ -176,9 +216,12 @@ void executeMainTask() {
 
   Countdown countdown =
       calculateCountdownToNextPrayer(nextPrayerInfo.time, timeinfo);
+  String title =
+      "✨══════•••••• Prayer times for " +
+      String(isShowNextDayPrayers ? "tomorrow"
+                                  : "today" + String("••••••══════✨"));
 
-  Serial.println("---------------------------");
-
+  Serial.println(title.c_str());
   Serial.printf("  ⏰ %s  %s\n", FAJR.c_str(), IQAMA_Fajr.c_str());
   Serial.printf("  🌅 %s\n", SUNRISE.c_str());
   Serial.printf("  ⏰ %s  %s\n", DHUHR.c_str(), IQAMA_Dhuhr.c_str());
@@ -188,8 +231,11 @@ void executeMainTask() {
 
   Serial.printf("  ⏳%s in %02d:%02d\n", nextPrayerInfo.name, countdown.hours,
                 countdown.minutes);
+  Serial.println("✨══════•••••••••••••••••••••••••••••••••••══════✨");
 
-  Serial.println("---------------------------");
+  Serial.println("✨═════════════•••••• Calender ••••••═════════════✨");
+  EventsManager::getInstance().listEventsForNextWeek();
+  Serial.println("✨══════•••••••••••••••••••••••••••••••••••══════✨");
 
   sleepDuration = 60 - currentSecond;
   unsigned long duration = millis() - startTime;
@@ -219,7 +265,8 @@ void fetchPrayerTimesIfDue() {
             Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
             splitCalendarJson(MOSQUE_FILE);
             splitCalendarJson(MOSQUE_FILE, true);
-            rtcData.lastUpdateMillis = RTCManager::getInstance().getEpochTime();
+            rtcData.mosqueLastUpdateMillis =
+                RTCManager::getInstance().getEpochTime();
             AppStateManager::save();
             state = RUNNING_MAIN_TASK;
 
@@ -252,8 +299,7 @@ void handleCheckingTime() {
   RTCManager &rtc = RTCManager::getInstance();
   if (rtc.isTimeSynced()) {
     Serial.println("✅ Time synced");
-    // state = RUNNING_MAIN_TASK;
-    state = FETCHING_USER_EVENTS;
+    state = RUNNING_MAIN_TASK;
   } else {
     Serial.println("❌ Time not synced");
     state = CONNECTING_WIFI_WITH_SAVED_CREDENTIALS;
@@ -388,83 +434,61 @@ void handleSleeping() {
 void handleMainTaskState() {
   Serial.println("⚙️ Running main task...");
   executeMainTask();
-  state = SHOULD_FETCH_MOSQUE_DATA;
+  state = RUNNING_PERIODIC_TASKS;
 }
 
-void handleShouldFetchMosqueData() {
-  Serial.println("🔄 Checking if mosque data needs to be fetched...");
-
-  time_t now = RTCManager::getInstance().getEpochTime();
-  if (now < 100000) {
-    Serial.println("⚠️ Skipping fetch: RTC not synced yet.");
-    state = SLEEPING;
-    return;
-  }
-
-  // Round to nearest minute
-  unsigned long nowAligned = now - (now % 60);
-  unsigned long lastUpdateAligned =
-      rtcData.lastUpdateMillis - (rtcData.lastUpdateMillis % 60);
-
-  if (rtcData.lastUpdateMillis == 0) {
-    Serial.println("🆕 No previous update. Fetching mosque data...");
-    fetchPrayerTimesIfDue();
-    return;
-  }
-
-  unsigned long elapsed = nowAligned - lastUpdateAligned;
-  unsigned long elapsedHours = elapsed / 3600;
-  unsigned long elapsedMinutes = (elapsed % 3600) / 60;
-
-  if (elapsed >= updateInterval / 1000) {
-    Serial.printf("⏱️ It's been %luh %lum since last update. Fetching now...\n",
-                  elapsedHours, elapsedMinutes);
-    fetchPrayerTimesIfDue();
-  } else {
-    unsigned long remaining = (updateInterval / 1000) - elapsed;
-    unsigned long remainingHours = remaining / 3600;
-    unsigned long remainingMinutes = (remaining % 3600) / 60;
-    Serial.printf("🕰️ Only %luh %lum elapsed. Next fetch in %luh %lum.\n",
-                  elapsedHours, elapsedMinutes, remainingHours,
-                  remainingMinutes);
-    state = SLEEPING;
-  }
-}
-void handleFetchingCalendar() {
-
-  Serial.println("📡 Fetching prayer times from MAWAQIT...");
+void fetchUserEvents() {
+  Serial.println("📡 Fetching user events...");
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
 
   WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
-    Serial.println(
-        "❌ Failed to connect to Wi-Fi to fetch prayer times if due");
+    Serial.println("❌ Failed to connect to Wi-Fi to fetch user events");
     // Track this state to show in the UI and stop keeping the device awake each
     // time
-
-    state = RUNNING_MAIN_TASK;
+    state = SLEEPING;
   });
   WiFiManager::getInstance().onWifiConnectedCallback([]() {
     Serial.println("✅ Connected to Wi-Fi to fetch user events.");
     String accessToken =
-        "ya29.a0AZYkNZiGgnTN3l7pT7L7BbcQnU6MFGlWd-01JM9tRpMbDrAa7HIizDyM_"
-        "urSl2ISv8WtXalwM5mmgaOWRDSDN16GfeSEZMdINVLCQjR7uC0e_"
-        "Df7IDIy8ebZbtojIb9hgPSbVy5vfsq7cUASlZcCqU2NLoo8mKpl8hnklErsaCgYKAR0SAR"
-        "MSFQHGX2MiBBA99JASRv3dWRx7yyec6g0175";
+        "ya29.a0AZYkNZhPmw82xd7KUc5HHOkHp0ry6IKMf4kuToG8366lTBXQ1erJWZ-"
+        "KcWDVzCmzo15m20QtKQhPenoKj53J9O47_"
+        "ufDV63qzLG1HPFtlyY1iuAT49acwOT0sOcNrZrIZqBWa0rELri7bzqGdfdnUOlzQ2Qfx7e"
+        "iYK68oz9aaCgYKAUcSARMSFQHGX2MiP2v21kf0TojWgc1RDkzQuw0175";
     EventsManager::getInstance().setAccessToken(accessToken);
-
     EventsManager::getInstance().asyncFetchEvents(
         [](bool success, const char *path) {
           if (success) {
             Serial.printf("✅ Events saved to %s\n", path);
-            EventsManager::getInstance().listEventsForNextWeek();
-            // You can add logic to parse and display events here
+            rtcData.userEventsUpdateMillis =
+                RTCManager::getInstance().getEpochTime();
+            AppStateManager::save();
           } else {
             Serial.println("⚠️ Calendar fetch failed");
           }
-          state = RUNNING_MAIN_TASK;
+          state = SLEEPING;
         });
   });
 }
+
+void handlePeriodicTasks() {
+  Serial.println("🔄 Running periodic tasks...");
+
+  if (shouldFetchBasedOnInterval(rtcData.mosqueLastUpdateMillis,
+                                 mosqueUpdateInterval, "MOSQUE_DATA")) {
+    fetchPrayerTimesIfDue();
+    return;
+  }
+  Serial.println("⚠️ Mosque data does not need to be fetched.");
+
+  if (shouldFetchBasedOnInterval(rtcData.userEventsUpdateMillis,
+                                 userEventsUpdateInterval, "USER_EVENTS")) {
+    fetchUserEvents();
+    return;
+  }
+  Serial.println("⚠️ User events do not need to be fetched.");
+  state = SLEEPING;
+}
+
 void handleAppState() {
   switch (state) {
   case BOOTING:
@@ -491,11 +515,8 @@ void handleAppState() {
   case RUNNING_MAIN_TASK:
     handleMainTaskState();
     break;
-  case SHOULD_FETCH_MOSQUE_DATA:
-    handleShouldFetchMosqueData();
-    break;
-  case FETCHING_USER_EVENTS:
-    handleFetchingCalendar();
+  case RUNNING_PERIODIC_TASKS:
+    handlePeriodicTasks();
     break;
   case SLEEPING:
     handleSleeping();

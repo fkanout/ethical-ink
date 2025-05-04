@@ -4,7 +4,8 @@
 struct RTCData {
   uint32_t rtcMagic = 0;
 
-  time_t lastUpdateMillis = 0;
+  time_t mosqueLastUpdateMillis = 0;
+  time_t userEventsUpdateMillis = 0;
 
   char TODAY_FAJR[6] = "00:00";
   char TODAY_IQAMA_FAJR[6] = "00:00";
