@@ -268,12 +268,10 @@ void fetchPrayerTimesIfDue() {
             rtcData.mosqueLastUpdateMillis =
                 RTCManager::getInstance().getEpochTime();
             AppStateManager::save();
-            state = RUNNING_MAIN_TASK;
-
           } else {
             Serial.println("⚠️ Failed to fetch valid data after retries.");
-            state = SLEEPING;
           }
+          state = SLEEPING;
         });
   });
 }
