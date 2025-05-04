@@ -70,6 +70,8 @@ void EventsManager::fetchTask(void *parameter) {
       if (error) {
         Serial.printf("❌ JSON validation failed: %s\n", error.c_str());
       } else {
+        Serial.println("🔍 Google events JSON content:");
+        Serial.println(json);
         File file = SPIFFS.open(EVENTS_JSON_PATH, FILE_WRITE);
         if (!file) {
           Serial.println("❌ Failed to open file for writing");
@@ -99,10 +101,11 @@ void EventsManager::listEventsForNextWeek() {
     return;
   }
 
-  StaticJsonDocument<8192> doc;
-  DeserializationError err = deserializeJson(doc, file);
+  String json = file.readString(); // ← read full content
   file.close();
 
+  StaticJsonDocument<8192> doc;
+  DeserializationError err = deserializeJson(doc, json);
   if (err) {
     Serial.printf("❌ JSON parse error: %s\n", err.c_str());
     return;

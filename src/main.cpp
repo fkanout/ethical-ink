@@ -456,7 +456,6 @@ void fetchUserEvents() {
     EventsManager::getInstance().asyncFetchEvents(
         [](bool success, const char *path) {
           if (success) {
-            Serial.printf("✅ Events saved to %s\n", path);
             rtcData.userEventsUpdateMillis =
                 RTCManager::getInstance().getEpochTime();
             AppStateManager::save();
@@ -470,7 +469,12 @@ void fetchUserEvents() {
 
 void handlePeriodicTasks() {
   Serial.println("🔄 Running periodic tasks...");
-
+  if (shouldFetchBasedOnInterval(rtcData.userEventsUpdateMillis,
+                                 userEventsUpdateInterval, "USER_EVENTS")) {
+    fetchUserEvents();
+    return;
+  }
+  Serial.println("⚠️ User events do not need to be fetched.");
   if (shouldFetchBasedOnInterval(rtcData.mosqueLastUpdateMillis,
                                  mosqueUpdateInterval, "MOSQUE_DATA")) {
     fetchPrayerTimesIfDue();
@@ -478,12 +482,6 @@ void handlePeriodicTasks() {
   }
   Serial.println("⚠️ Mosque data does not need to be fetched.");
 
-  if (shouldFetchBasedOnInterval(rtcData.userEventsUpdateMillis,
-                                 userEventsUpdateInterval, "USER_EVENTS")) {
-    fetchUserEvents();
-    return;
-  }
-  Serial.println("⚠️ User events do not need to be fetched.");
   state = SLEEPING;
 }
 
