@@ -1,0 +1,13 @@
+#ifndef SPIFFS_HELPER_H
+#define SPIFFS_HELPER_H
+
+#include <Arduino.h>
+#include <FS.h>
+#include <SPIFFS.h> // Use LittleFS if configured
+
+bool setupSPIFFS();
+String readJsonFile(const String &jsonPath);
+bool writeJsonFile(const String &filename, const String &jsonData);
+bool splitCalendarJson(const String &rawJsonPath, const bool &isIqama = false);
+void deleteFile(const char *path);
+#endif

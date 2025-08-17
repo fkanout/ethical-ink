@@ -1,0 +1,59 @@
+#include <GxEPD2_BW.h>
+#include <Fonts/FreeMonoBold9pt7b.h>
+#include <Fonts/FreeMonoBold24pt7b.h>  // Larger font for time
+#include <SPI.h>
+
+// Pins for ESP32-S3 (adjust if needed)
+#define EPD_CS   10
+#define EPD_DC   9
+#define EPD_RST  8
+#define EPD_BUSY 7
+
+// GDEH075T7 V2 - 7.5" b/w screen
+GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> display(GxEPD2_750_T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
+
+void setup() {
+  Serial.begin(115200);
+  delay(100);
+
+  display.init(115200);  // SPI speed
+  display.setRotation(1);
+  display.setFullWindow();
+
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
+
+    // Use a large bold font
+    display.setFont(&FreeMonoBold24pt7b);
+
+    const char* timeStr = "12:00";
+
+    // Measure text bounds
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(timeStr, 0, 0, &x1, &y1, &w, &h);
+
+    // Position to center the text
+    int16_t centerX = 200; // adjust as needed
+    int16_t centerY = 200; // adjust as needed
+
+    int16_t textX = centerX - w / 2;
+    int16_t textY = centerY + h / 2; // baseline corrected
+
+    // Draw black background rectangle
+    display.fillRect(textX - 10, textY - h, w + 20, h + 10, GxEPD_BLACK);
+
+    // Draw the white time text
+    display.setTextColor(GxEPD_WHITE);
+    display.setCursor(textX, textY);
+    display.println(timeStr);
+
+  } while (display.nextPage());
+
+  Serial.println("Done.");
+}
+
+void loop() {
+  // Nothing for now
+}
