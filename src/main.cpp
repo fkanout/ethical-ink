@@ -76,7 +76,7 @@ void setup() {
 
   } while (display.nextPage());
 
-  Serial.println("Drawing complete.");
+//  Serial.println("Drawing complete.");
 }
 
 void loop() {
