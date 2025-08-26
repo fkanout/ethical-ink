@@ -1,0 +1,111 @@
+entry 0x403c98d0
+🔁 State changed: 11 ➡️ 0
+✅ SPIFFS mounted successfully
+🧹 RTC memory invalid, reinitializing...
+🔁 State changed: 0 ➡️ 1
+⏱️ Checking time...
+❌ Time not synced
+🔁 State changed: 1 ➡️ 2
+🔄 Connecting to Wi-Fi...
+📂 Reading large JSON file from SPIFFS...
+✅ Read 39 bytes from file.
+🔄 Attempt 1: Connecting to iPhone
+[  3526][W][WiFiGeneric.cpp:1062] _eventCallback(): Reason: 201 - NO_AP_FOUND
+[  5946][W][WiFiGeneric.cpp:1062] _eventCallback(): Reason: 201 - NO_AP_FOUND
+❌ Connection attempt failed. Retrying...
+🔄 Attempt 2: Connecting to iPhone
+[ 14731][W][WiFiGeneric.cpp:1062] _eventCallback(): Reason: 201 - NO_AP_FOUND
+❌ Connection attempt failed. Retrying...
+🔄 Attempt 3: Connecting to iPhone
+[ 25936][W][WiFiGeneric.cpp:1062] _eventCallback(): Reason: 201 - NO_AP_FOUND
+❌ Connection attempt failed. Retrying...
+❌ Failed to connect after all retries.
+❌ Failed to connect to Wi-Fi
+🔁 State changed: 2 ➡️ 5
+🔔 Advertising BLE...
+🔵 Initializing BLE...
+📡 BLE is advertising...
+[ 34933][I][BLEDevice.cpp:577] getAdvertising(): create advertising
+📱 Phone connected
+📲 Notifications enabled!
+🔔 BLE notification enabled
+🔁 State changed: 5 ➡️ 6
+🔄 Waiting for Wi-Fi scan...
+🔍 Scanning WiFi networks...
+✅ Found 8 networks:
+📋 Wi-Fi scan results:
+   📶 Redmi Note 14S              -28dBm  secured
+   📶 nor_Ext                     -50dBm  secured
+   📶 hdad-2                      -61dBm  secured
+   📶 W0035112556352              -63dBm  secured
+   📶 W0037073291883              -66dBm  secured
+   📶 qwer                        -80dBm  secured
+   📶 Royal Designer              -81dBm  secured
+   📶 nor                         -92dBm  secured
+📤 Wi-Fi list send via BLE
+📩 Received JSON over BLE: {"ssid":"Redmi Note 14S","password":"12345678"}
+🔄 Attempt 1: Connecting to Redmi Note 14S
+🔁 State changed: 6 ➡️ 3
+🔄 Connecting to Wi-Fi...
+✅ Connected to Wi‑Fi!
+📡 IP Address: 10.168.24.243
+✅ JSON saved successfully: /wifi.json
+💾 Wifi Credentials saved to /wifi.json
+✅ Wi-Fi connected
+🔕 BLE advertising stopped[ 71942][I][BLEAdvertising.cpp:522] handleGAPEvent(): STOP advertising
+
+🔁 State changed: 3 ➡️ 4
+🔄 Syncing time...
+🌐 Attempt 1 to get timezone offset from ipwho.is
+✅ Timezone offset: 10800 seconds
+⏳ Attempt 1 to sync NTP time
+✅ NTP time sync complete
+✅ RTC updated with epoch time
+✅ Time synced successfully
+🔁 State changed: 4 ➡️ 8
+⚙️ Running main task...
+⚙️ CPU now running at: 80 MHz
+🕒 13:56:25  📅 26/08/2025
+🔄 Fetching prayer times for month: 8, day: 26
+📅 Fetching Iqama times for month: 8, day: 26
+✅ RTC memory saved
+🔄 Next day
+📅 Fetching Iqama times for month: 8, day: 27
+🔄 Fetching prayer times for month: 8, day: 27
+✅ RTC memory saved
+✨══════•••••• Prayer times for today••••••══════✨
+  ⏰ 04:46  +60
+  🌅 06:18
+  ⏰ 13:12  +15
+  ⏰ 16:55  +15
+  ⏰ 19:55  +10
+  ⏰ 21:21  +15
+  ⏳Asr in 02:58
+✨══════•••••••••••••••••••••••••••••••••••══════✨
+✨═════════════•••••• Calender ••••••═════════════✨
+📅 Events for the next 7 days:
+🔹 [Save the Date]: FY26 Engineering All Hands at 2025-05-12 | Creator: eah@elastic.co | Status: tentative
+🔹 Obs. UX Management Tech Sync at 2025-05-13T15:30:00+02:00 | Creator: shahzad.muhammad@elastic.co | Status: tentative
+🔹 Obs Experience All Hands @ EAH at 2025-05-13T18:00:00+02:00 | Creator: andres.rodriguez@elastic.co | Status: needsAction     
+🔹 Observability All Hands @ EAH at 2025-05-14T18:00:00+02:00 | Creator: andres.rodriguez@elastic.co | Status: needsAction      
+🔹 ☕️ Zoom Café - France team at 2025-05-16T10:30:00+02:00 | Creator: David Pilato | Status: declined
+✨══════•••••••••••••••••••••••••••••••••••══════✨
+⏱️ Main task completed in 742 ms
+🔁 State changed: 8 ➡️ 9
+🔄 Running periodic tasks...
+🆕 [USER_EVENTS] No previous update. Should fetch.
+📡 Fetching user events...
+📂 Reading large JSON file from SPIFFS...
+✅ Read 47 bytes from file.
+🔄 Attempt 1: Connecting to Redmi Note 14S
+[ 77220][W][WiFiGeneric.cpp:1062] _eventCallback(): Reason: 8 - ASSOC_LEAVE
+✅ Connected to Wi‑Fi!
+📡 IP Address: 10.168.24.243
+✅ JSON saved successfully: /wifi.json
+💾 Wifi Credentials saved to /wifi.json
+✅ Connected to Wi-Fi to fetch user events.
+🌐 Fetching events from: https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=2025-08-26T13:56:26Z&timeMax=2025-09-02T13:56:26Z&maxResults=20&orderBy=startTime&singleEvents=true
+❌ HTTP GET failed: 401
+⚠️ Calendar fetch failed
+🔁 State changed: 9 ➡️ 10
+💤 Sleeping for 30 seconds to align with full minute...
