@@ -43,6 +43,13 @@ bool isFetching = false;
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
 
+// Add these global variables to track changes
+String lastCountdownStr = "";
+int lastHighlightIndex = -1;
+bool forceFullRefresh = false;
+int partialUpdateCount = 0;
+const int MAX_PARTIAL_UPDATES = 10; // Force full refresh after N partial updates
+
 // ---------- helpers ----------
 void drawTextBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font) {
   display.setFont(font);
@@ -230,6 +237,63 @@ bool isLaterThan(int hour, int minute, const String &timeStr) {
   return false;
 }
 
+// Helper functions for display updates
+void performFullRefresh(const char* countdownStr, const char* prayerNames[], 
+                       const char* prayerTimes[], int highlightIndex) {
+  display.setFullWindow();
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
+
+    int16_t currentY = 10;
+    int16_t boxW = 200, boxH = 60, spacing = 20;
+    int16_t boxX = (800 - boxW) / 2;
+
+    // Mosque name box
+    drawTextBox("Mosque Name", boxX, currentY, boxW, boxH, &FreeMonoBold9pt7b);
+
+    // "Prayer in"
+    currentY += boxH + spacing;
+    drawCenteredText("Prayer in", 400, currentY, &FreeMonoBold9pt7b);
+
+    // HH:MM big box with countdown
+    currentY += 30;
+    drawTextBox(countdownStr, boxX, currentY, 200, 100, &FreeMonoBold24pt7b);
+
+    // Bottom row prayer times
+    int16_t rowY = 300;
+    int16_t prayerBoxW = 140;
+    int16_t prayerBoxH = 90;
+    int16_t prayerSpacing = 10;
+    drawPrayerTimeBoxes(prayerNames, prayerTimes, 5, rowY, prayerBoxW, prayerBoxH, 
+                       prayerSpacing, highlightIndex);
+  } while (display.nextPage());
+}
+
+void performPartialCountdownUpdate(const char* countdownStr) {
+  // Define the countdown box area
+  int16_t boxX = (800 - 200) / 2;
+  int16_t boxY = 140; // Adjust based on your layout (currentY + 30 from your original code)
+  int16_t boxW = 200;
+  int16_t boxH = 100;
+  
+  // Set partial window for countdown area
+  display.setPartialWindow(boxX, boxY, boxW, boxH);
+  
+  display.firstPage();
+  do {
+    // Clear the countdown area
+    display.fillRect(boxX, boxY, boxW, boxH, GxEPD_WHITE);
+    // Redraw just the countdown box
+    drawTextBox(countdownStr, boxX, boxY, boxW, boxH, &FreeMonoBold24pt7b);
+  } while (display.nextPage());
+}
+
+// Add this function to force a full refresh when needed
+void forceNextFullRefresh() {
+  forceFullRefresh = true;
+}
+
 void executeMainTask() {
   setCpuFrequencyMhz(80);
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
@@ -316,44 +380,78 @@ void executeMainTask() {
   Serial.printf("  ⏳%s in %02d:%02d\n", nextPrayerInfo.name.c_str(), countdown.hours, countdown.minutes);
   Serial.println("✨══════•••••••••••••••••••••••••••••••••••══════✨");
 
-    // ---------- E-paper display ----------
-    const char* prayerNames[5] = {"Fajr","Dhuhr","Asr","Maghrib","Isha"};
-    const char* prayerTimes[5] = {FAJR.c_str(), DHUHR.c_str(), ASR.c_str(), MAGHRIB.c_str(), ISHA.c_str()};
-    int highlightIndex = getNextPrayerIndex(prayerTimes, 5, timeinfo.tm_hour, timeinfo.tm_min);
-
-    display.firstPage();
-    do {
-        display.fillScreen(GxEPD_WHITE);
-
-        int16_t currentY = 10;
-        int16_t boxW = 200, boxH = 60, spacing = 20;
-        int16_t boxX = (800 - boxW) / 2;
-
-        // Mosque name box
-        drawTextBox("Mosque Name", boxX, currentY, boxW, boxH, &FreeMonoBold9pt7b);
-
-        // "Prayer in"
-        currentY += boxH + spacing;
-        drawCenteredText("Prayer in", 400, currentY, &FreeMonoBold9pt7b);
-
-        // HH:MM big box with countdown
-        currentY += 30;
-        drawTextBox(countdownStr, boxX, currentY, 200, 100, &FreeMonoBold24pt7b);
-
-        // bottom row prayer times
-        int16_t rowY = 300;
-        int16_t prayerBoxW = 140;
-        int16_t prayerBoxH = 90;
-        int16_t prayerSpacing = 10;
-        drawPrayerTimeBoxes(prayerNames, prayerTimes, 5, rowY, prayerBoxW, prayerBoxH, prayerSpacing, highlightIndex);
-
-    } while (display.nextPage());
-
-    // Sleep duration until next update
+  // ---------- Optimized E-paper display update ----------
+  const char* prayerNames[5] = {"Fajr","Dhuhr","Asr","Maghrib","Isha"};
+  const char* prayerTimes[5] = {FAJR.c_str(), DHUHR.c_str(), ASR.c_str(), MAGHRIB.c_str(), ISHA.c_str()};
+  int currentHighlightIndex = getNextPrayerIndex(prayerTimes, 5, timeinfo.tm_hour, timeinfo.tm_min);
+  
+  // Check what needs updating
+  bool countdownChanged = (String(countdownStr) != lastCountdownStr);
+  bool highlightChanged = (currentHighlightIndex != lastHighlightIndex);
+  bool needsFullRefresh = forceFullRefresh || (partialUpdateCount >= MAX_PARTIAL_UPDATES);
+  
+  Serial.printf("📊 Display Update Status:\n");
+  Serial.printf("   Countdown: %s -> %s (Changed: %s)\n", 
+                lastCountdownStr.c_str(), countdownStr, countdownChanged ? "YES" : "NO");
+  Serial.printf("   Highlight: %d -> %d (Changed: %s)\n", 
+                lastHighlightIndex, currentHighlightIndex, highlightChanged ? "YES" : "NO");
+  Serial.printf("   Partial Updates: %d/%d\n", partialUpdateCount, MAX_PARTIAL_UPDATES);
+  Serial.printf("   Force Full Refresh: %s\n", forceFullRefresh ? "YES" : "NO");
+  
+  if (!countdownChanged && !highlightChanged && !needsFullRefresh) {
+    Serial.println("⏭️ No display changes needed, skipping screen update");
     unsigned long duration = millis() - startTime;
-    Serial.printf("⏱️ Main task completed in %lu ms\n", duration);
+    Serial.printf("⏱️ Main task completed in %lu ms (no display update)\n", duration);
+    return;
+  }
+
+  // Determine update type and perform update
+  if (needsFullRefresh || highlightChanged) {
+    Serial.println("🔄 Performing FULL screen refresh");
+    Serial.printf("   Reason: %s%s%s\n", 
+                  needsFullRefresh ? "MaxPartialReached/Forced " : "",
+                  highlightChanged ? "HighlightChanged " : "",
+                  forceFullRefresh ? "ForceRefresh " : "");
+    
+    performFullRefresh(countdownStr, prayerNames, prayerTimes, currentHighlightIndex);
+    partialUpdateCount = 0;
+    forceFullRefresh = false;
+    Serial.println("✅ Full refresh completed");
+    
+  } else if (countdownChanged) {
+    Serial.println("⚡ Performing PARTIAL update (countdown only)");
+    
+    // Check if partial updates are supported
+    if (display.epd2.hasFastPartialUpdate) {
+      performPartialCountdownUpdate(countdownStr);
+      partialUpdateCount++;
+      Serial.printf("✅ Partial update completed (%d/%d)\n", partialUpdateCount, MAX_PARTIAL_UPDATES);
+    } else {
+      Serial.println("⚠️ Partial updates not supported, falling back to full refresh");
+      performFullRefresh(countdownStr, prayerNames, prayerTimes, currentHighlightIndex);
+      partialUpdateCount = 0;
+    }
+  }
+
+  // Update tracking variables
+  lastCountdownStr = String(countdownStr);
+  lastHighlightIndex = currentHighlightIndex;
+
+  // Sleep duration until next update
+  unsigned long duration = millis() - startTime;
+  Serial.printf("⏱️ Main task completed in %lu ms\n", duration);
 }
 
+// Additional helper function to force full refresh when prayer data changes
+// Call this from your prayer data fetch functions
+void onPrayerDataUpdated() {
+  Serial.println("📅 Prayer data updated - forcing next full refresh");
+  forceNextFullRefresh();
+  // Reset tracking to ensure full refresh
+  lastCountdownStr = "";
+  lastHighlightIndex = -1;
+  partialUpdateCount = 0;
+}
 //-------------------------end main execute-------------------------------------
 void fetchPrayerTimesIfDue() {
   Serial.println("📡 Fetching prayer times from MAWAQIT...");
