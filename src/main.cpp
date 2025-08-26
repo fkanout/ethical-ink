@@ -43,9 +43,6 @@ bool isFetching = false;
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
 
-
-//---------------------------------------helpers for screem---------------------------------
-
 // ---------- helpers ----------
 void drawTextBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font) {
   display.setFont(font);
@@ -131,6 +128,24 @@ void drawPrayerTimeBoxes(const char* names[], const char* times[], int count,
   }
 }
 
+// ---------- helper: find next prayer ----------
+int getNextPrayerIndex(const char* times[], int count, int currentHour, int currentMin) {
+  int now = currentHour * 60 + currentMin; // total minutes
+
+  for (int i = 0; i < count; i++) {
+    int h, m;
+    sscanf(times[i], "%d:%d", &h, &m);
+    int t = h * 60 + m;
+    if (t > now) {
+      return i; // first prayer after current time
+    }
+  }
+  return 0; // if none left, wrap to Fajr
+}
+
+//---------------------------------------helpers for screen---------------------------------
+
+
 //--------------------------------------------------------------------------
 bool shouldFetchBasedOnInterval(unsigned long lastUpdateSeconds,
                                 unsigned long intervalSeconds,
@@ -214,6 +229,7 @@ bool isLaterThan(int hour, int minute, const String &timeStr) {
     return true;
   return false;
 }
+
 void executeMainTask() {
   setCpuFrequencyMhz(80);
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
@@ -285,6 +301,9 @@ void executeMainTask() {
   }
 
   Countdown countdown = calculateCountdownToNextPrayer(nextPrayerInfo.time, timeinfo);
+  char countdownStr[16];
+  sprintf(countdownStr, "%02d:%02d", countdown.hours, countdown.minutes);
+
   String title = String("✨══════•••••• Prayer times for ") + (isShowNextDayPrayers ? "tomorrow" : "today") + " ••••••══════✨";
 
   Serial.println(title.c_str());
@@ -297,32 +316,43 @@ void executeMainTask() {
   Serial.printf("  ⏳%s in %02d:%02d\n", nextPrayerInfo.name.c_str(), countdown.hours, countdown.minutes);
   Serial.println("✨══════•••••••••••••••••••••••••••••••••••══════✨");
 
-  //-------------------------------------E-paper---------------------------------
-  display.firstPage();
-  do {
-    display.fillScreen(GxEPD_WHITE);
+    // ---------- E-paper display ----------
+    const char* prayerNames[5] = {"Fajr","Dhuhr","Asr","Maghrib","Isha"};
+    const char* prayerTimes[5] = {FAJR.c_str(), DHUHR.c_str(), ASR.c_str(), MAGHRIB.c_str(), ISHA.c_str()};
+    int highlightIndex = getNextPrayerIndex(prayerTimes, 5, timeinfo.tm_hour, timeinfo.tm_min);
 
-    drawCenteredText((String("Next: ") + nextPrayerInfo.name).c_str(), 400, 50, &FreeMonoBold18pt7b);
-    char countdownStr[16];
-    sprintf(countdownStr, "%02d:%02d", countdown.hours, countdown.minutes);
-    drawCenteredText((String("In ") + String(countdownStr)).c_str(), 400, 100, &FreeMonoBold24pt7b);
+    display.firstPage();
+    do {
+        display.fillScreen(GxEPD_WHITE);
 
-    int startY = 200;
-    int spacing = 50;
-    drawTextBox((String("Fajr: ") + FAJR).c_str(), 50, startY + spacing * 0, 300, 40, &FreeMonoBold9pt7b);
-    drawTextBox((String("Dhuhr: ") + DHUHR).c_str(), 50, startY + spacing * 1, 300, 40, &FreeMonoBold9pt7b);
-    drawTextBox((String("Asr: ") + ASR).c_str(), 50, startY + spacing * 2, 300, 40, &FreeMonoBold9pt7b);
-    drawTextBox((String("Maghrib: ") + MAGHRIB).c_str(), 50, startY + spacing * 3, 300, 40, &FreeMonoBold9pt7b);
-    drawTextBox((String("Isha: ") + ISHA).c_str(), 50, startY + spacing * 4, 300, 40, &FreeMonoBold9pt7b);
+        int16_t currentY = 10;
+        int16_t boxW = 200, boxH = 60, spacing = 20;
+        int16_t boxX = (800 - boxW) / 2;
 
-  } while (display.nextPage());
-  //------------------------------------------------------------------------
+        // Mosque name box
+        drawTextBox("Mosque Name", boxX, currentY, boxW, boxH, &FreeMonoBold9pt7b);
 
-  sleepDuration = 60 - currentSecond;
-  unsigned long duration = millis() - startTime;
-  Serial.printf("⏱️ Main task completed in %lu ms\n", duration);
+        // "Prayer in"
+        currentY += boxH + spacing;
+        drawCenteredText("Prayer in", 400, currentY, &FreeMonoBold9pt7b);
+
+        // HH:MM big box with countdown
+        currentY += 30;
+        drawTextBox(countdownStr, boxX, currentY, 200, 100, &FreeMonoBold24pt7b);
+
+        // bottom row prayer times
+        int16_t rowY = 300;
+        int16_t prayerBoxW = 140;
+        int16_t prayerBoxH = 90;
+        int16_t prayerSpacing = 10;
+        drawPrayerTimeBoxes(prayerNames, prayerTimes, 5, rowY, prayerBoxW, prayerBoxH, prayerSpacing, highlightIndex);
+
+    } while (display.nextPage());
+
+    // Sleep duration until next update
+    unsigned long duration = millis() - startTime;
+    Serial.printf("⏱️ Main task completed in %lu ms\n", duration);
 }
-
 
 //-------------------------end main execute-------------------------------------
 void fetchPrayerTimesIfDue() {
