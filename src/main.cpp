@@ -16,6 +16,8 @@
 #include <Fonts/FreeMonoBold18pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
 #include <SPI.h>
+#include "ScreenUI.h"
+#include "GxEPD2Adapter.h"
 
 // Pins for E-paper
 #define EPD_CS   10
@@ -34,7 +36,8 @@ struct RenderState {
   int lastHighlight;
   char times[5][6]; // Fajr..Isha بصيغة "HH:MM"
 };
-RTC_DATA_ATTR RenderState g_renderState = { false, -1, {"","","","",""} };
+// RTC slow memory state (optional)
+RTC_DATA_ATTR RenderStatePersist g_renderState;
 
 
 CalendarManager calendarManager;
@@ -49,185 +52,185 @@ bool isFetching = false;
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
 
-// ---------- helpers ----------
-void drawTextBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font) {
-  display.setFont(font);
+// // ---------- helpers ----------
+// void drawTextBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font) {
+//   display.setFont(font);
 
-  int16_t x1, y1; uint16_t w, h;
-  display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+//   int16_t x1, y1; uint16_t w, h;
+//   display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
 
-  display.drawRect(x, y, wBox, hBox, GxEPD_BLACK);
+//   display.drawRect(x, y, wBox, hBox, GxEPD_BLACK);
 
-  int16_t textX = x + (wBox - w) / 2 - x1;
-  int16_t textY = y + (hBox - h) / 2 - y1;
+//   int16_t textX = x + (wBox - w) / 2 - x1;
+//   int16_t textY = y + (hBox - h) / 2 - y1;
 
-  display.setTextColor(GxEPD_BLACK);
-  display.setCursor(textX, textY);
-  display.print(text);
-}
+//   display.setTextColor(GxEPD_BLACK);
+//   display.setCursor(textX, textY);
+//   display.print(text);
+// }
 
-void drawCenteredText(const char* text, int16_t centerX, int16_t topY, const GFXfont* font) {
-  display.setFont(font);
+// void drawCenteredText(const char* text, int16_t centerX, int16_t topY, const GFXfont* font) {
+//   display.setFont(font);
 
-  int16_t x1, y1; uint16_t w, h;
-  display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+//   int16_t x1, y1; uint16_t w, h;
+//   display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
 
-  int16_t textX = centerX - w/2 - x1;
-  int16_t textY = topY - y1;
+//   int16_t textX = centerX - w/2 - x1;
+//   int16_t textY = topY - y1;
 
-  display.setTextColor(GxEPD_BLACK);
-  display.setCursor(textX, textY);
-  display.print(text);
-}
+//   display.setTextColor(GxEPD_BLACK);
+//   display.setCursor(textX, textY);
+//   display.print(text);
+// }
 
-// ---------- draw prayer-time boxes with highlight ----------
-void drawPrayerTimeBoxes(const char* names[], const char* times[], int count,
-                         int16_t startY, int16_t boxW, int16_t boxH, int16_t spacing,
-                         int highlightIndex = -1) {
-  // center the whole row
-  int16_t totalW = count * boxW + (count - 1) * spacing;
-  int16_t startX = (800 - totalW) / 2;
+// // ---------- draw prayer-time boxes with highlight ----------
+// void drawPrayerTimeBoxes(const char* names[], const char* times[], int count,
+//                          int16_t startY, int16_t boxW, int16_t boxH, int16_t spacing,
+//                          int highlightIndex = -1) {
+//   // center the whole row
+//   int16_t totalW = count * boxW + (count - 1) * spacing;
+//   int16_t startX = (800 - totalW) / 2;
 
-  for (int i = 0; i < count; i++) {
-    int16_t x = startX + i * (boxW + spacing);
+//   for (int i = 0; i < count; i++) {
+//     int16_t x = startX + i * (boxW + spacing);
 
-    if (i == highlightIndex) {
-      // Highlighted box (black background, white text)
-      display.fillRect(x, startY, boxW, boxH, GxEPD_BLACK);
-      display.drawRect(x, startY, boxW, boxH, GxEPD_BLACK);
+//     if (i == highlightIndex) {
+//       // Highlighted box (black background, white text)
+//       display.fillRect(x, startY, boxW, boxH, GxEPD_BLACK);
+//       display.drawRect(x, startY, boxW, boxH, GxEPD_BLACK);
 
-      display.setFont(&FreeMonoBold9pt7b);
-      int16_t x1, y1; uint16_t w, h;
-      display.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
-      int16_t nameX = x + (boxW - w) / 2 - x1;
-      int16_t nameY = startY + 20;
-      display.setTextColor(GxEPD_WHITE);
-      display.setCursor(nameX, nameY);
-      display.print(names[i]);
+//       display.setFont(&FreeMonoBold9pt7b);
+//       int16_t x1, y1; uint16_t w, h;
+//       display.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
+//       int16_t nameX = x + (boxW - w) / 2 - x1;
+//       int16_t nameY = startY + 20;
+//       display.setTextColor(GxEPD_WHITE);
+//       display.setCursor(nameX, nameY);
+//       display.print(names[i]);
 
-      display.setFont(&FreeMonoBold18pt7b);
-      display.getTextBounds(times[i], 0, 0, &x1, &y1, &w, &h);
-      int16_t timeX = x + (boxW - w) / 2 - x1;
-      int16_t timeY = startY + boxH - 12;
-      display.setCursor(timeX, timeY);
-      display.print(times[i]);
-    } else {
-      // Normal box
-      display.drawRect(x, startY, boxW, boxH, GxEPD_BLACK);
+//       display.setFont(&FreeMonoBold18pt7b);
+//       display.getTextBounds(times[i], 0, 0, &x1, &y1, &w, &h);
+//       int16_t timeX = x + (boxW - w) / 2 - x1;
+//       int16_t timeY = startY + boxH - 12;
+//       display.setCursor(timeX, timeY);
+//       display.print(times[i]);
+//     } else {
+//       // Normal box
+//       display.drawRect(x, startY, boxW, boxH, GxEPD_BLACK);
 
-      display.setFont(&FreeMonoBold9pt7b);
-      int16_t x1, y1; uint16_t w, h;
-      display.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
-      int16_t nameX = x + (boxW - w) / 2 - x1;
-      int16_t nameY = startY + 20;
-      display.setTextColor(GxEPD_BLACK);
-      display.setCursor(nameX, nameY);
-      display.print(names[i]);
+//       display.setFont(&FreeMonoBold9pt7b);
+//       int16_t x1, y1; uint16_t w, h;
+//       display.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
+//       int16_t nameX = x + (boxW - w) / 2 - x1;
+//       int16_t nameY = startY + 20;
+//       display.setTextColor(GxEPD_BLACK);
+//       display.setCursor(nameX, nameY);
+//       display.print(names[i]);
 
-      display.setFont(&FreeMonoBold18pt7b);
-      display.getTextBounds(times[i], 0, 0, &x1, &y1, &w, &h);
-      int16_t timeX = x + (boxW - w) / 2 - x1;
-      int16_t timeY = startY + boxH - 12;
-      display.setCursor(timeX, timeY);
-      display.print(times[i]);
-    }
-  }
-}
+//       display.setFont(&FreeMonoBold18pt7b);
+//       display.getTextBounds(times[i], 0, 0, &x1, &y1, &w, &h);
+//       int16_t timeX = x + (boxW - w) / 2 - x1;
+//       int16_t timeY = startY + boxH - 12;
+//       display.setCursor(timeX, timeY);
+//       display.print(times[i]);
+//     }
+//   }
+// }
 
-// ---------- helper: find next prayer ----------
-int getNextPrayerIndex(const char* times[], int count, int currentHour, int currentMin) {
-  int now = currentHour * 60 + currentMin; // total minutes
+// // ---------- helper: find next prayer ----------
+// int getNextPrayerIndex(const char* times[], int count, int currentHour, int currentMin) {
+//   int now = currentHour * 60 + currentMin; // total minutes
 
-  for (int i = 0; i < count; i++) {
-    int h, m;
-    sscanf(times[i], "%d:%d", &h, &m);
-    int t = h * 60 + m;
-    if (t > now) {
-      return i; // first prayer after current time
-    }
-  }
-  return 0; // if none left, wrap to Fajr
-}
+//   for (int i = 0; i < count; i++) {
+//     int h, m;
+//     sscanf(times[i], "%d:%d", &h, &m);
+//     int t = h * 60 + m;
+//     if (t > now) {
+//       return i; // first prayer after current time
+//     }
+//   }
+//   return 0; // if none left, wrap to Fajr
+// }
 
-// ===== تخطيط ثابت يحافظ على تصميمك =====
-struct Layout {
-  int16_t boxX, boxW, boxH, spacing;
-  int16_t headerY;
-  int16_t countdownY;
-  int16_t countdownW, countdownH;
-  int16_t rowY, prayerBoxW, prayerBoxH, prayerSpacing, rowStartX, rowW;
-};
+// // ===== تخطيط ثابت يحافظ على تصميمك =====
+// struct Layout {
+//   int16_t boxX, boxW, boxH, spacing;
+//   int16_t headerY;
+//   int16_t countdownY;
+//   int16_t countdownW, countdownH;
+//   int16_t rowY, prayerBoxW, prayerBoxH, prayerSpacing, rowStartX, rowW;
+// };
 
-static Layout computeLayout() {
-  Layout L;
-  L.boxW = 200; L.boxH = 60; L.spacing = 20;
-  L.boxX = (800 - L.boxW) / 2;
-  L.headerY = 10;
-  L.countdownY = L.headerY + L.boxH + L.spacing + 30;
-  L.countdownW = 200; L.countdownH = 100;
+// static Layout computeLayout() {
+//   Layout L;
+//   L.boxW = 200; L.boxH = 60; L.spacing = 20;
+//   L.boxX = (800 - L.boxW) / 2;
+//   L.headerY = 10;
+//   L.countdownY = L.headerY + L.boxH + L.spacing + 30;
+//   L.countdownW = 200; L.countdownH = 100;
 
-  L.rowY = 300; L.prayerBoxW = 140; L.prayerBoxH = 90; L.prayerSpacing = 10;
-  const int count = 5;
-  L.rowW = count * L.prayerBoxW + (count - 1) * L.prayerSpacing;
-  L.rowStartX = (800 - L.rowW) / 2;
-  return L;
-}
+//   L.rowY = 300; L.prayerBoxW = 140; L.prayerBoxH = 90; L.prayerSpacing = 10;
+//   const int count = 5;
+//   L.rowW = count * L.prayerBoxW + (count - 1) * L.prayerSpacing;
+//   L.rowStartX = (800 - L.rowW) / 2;
+//   return L;
+// }
 
-static bool timesChanged(const char* a, const char* b) { return strcmp(a, b) != 0; }
+// static bool timesChanged(const char* a, const char* b) { return strcmp(a, b) != 0; }
 
-// ===== تحديث جزئي: صندوق العدّ التنازلي =====
-static void redrawCountdownRegion(const Layout& L, const char* countdownStr) {
-  display.setPartialWindow(L.boxX, L.countdownY, L.countdownW, L.countdownH);
-  display.firstPage();
-  do {
-    display.fillRect(L.boxX, L.countdownY, L.countdownW, L.countdownH, GxEPD_WHITE);
-    drawTextBox(countdownStr, L.boxX, L.countdownY, L.countdownW, L.countdownH, &FreeMonoBold24pt7b);
-  } while (display.nextPage());
-}
+// // ===== تحديث جزئي: صندوق العدّ التنازلي =====
+// static void redrawCountdownRegion(const Layout& L, const char* countdownStr) {
+//   display.setPartialWindow(L.boxX, L.countdownY, L.countdownW, L.countdownH);
+//   display.firstPage();
+//   do {
+//     display.fillRect(L.boxX, L.countdownY, L.countdownW, L.countdownH, GxEPD_WHITE);
+//     drawTextBox(countdownStr, L.boxX, L.countdownY, L.countdownW, L.countdownH, &FreeMonoBold24pt7b);
+//   } while (display.nextPage());
+// }
 
-// ===== تحديث جزئي: صف المواقيت كامل (فقط عند الحاجة) =====
-static void redrawPrayerRowRegion(const Layout& L,
-                                  const char* names[5], const char* times[5],
-                                  int highlightIndex) {
-  display.setPartialWindow(L.rowStartX, L.rowY, L.rowW, L.prayerBoxH);
-  display.firstPage();
-  do {
-    display.fillRect(L.rowStartX, L.rowY, L.rowW, L.prayerBoxH, GxEPD_WHITE);
-    drawPrayerTimeBoxes(names, times, 5, L.rowY, L.prayerBoxW, L.prayerBoxH, L.prayerSpacing, highlightIndex);
-  } while (display.nextPage());
-}
+// // ===== تحديث جزئي: صف المواقيت كامل (فقط عند الحاجة) =====
+// static void redrawPrayerRowRegion(const Layout& L,
+//                                   const char* names[5], const char* times[5],
+//                                   int highlightIndex) {
+//   display.setPartialWindow(L.rowStartX, L.rowY, L.rowW, L.prayerBoxH);
+//   display.firstPage();
+//   do {
+//     display.fillRect(L.rowStartX, L.rowY, L.rowW, L.prayerBoxH, GxEPD_WHITE);
+//     drawPrayerTimeBoxes(names, times, 5, L.rowY, L.prayerBoxW, L.prayerBoxH, L.prayerSpacing, highlightIndex);
+//   } while (display.nextPage());
+// }
 
-// ===== Partial: الهيدر ("Mosque Name" + "Prayer in") =====
-static void redrawHeaderRegion(const Layout& L, const char* mosqueName) {
-  // صندوق الاسم
-  display.setPartialWindow(L.boxX, L.headerY, L.boxW, L.boxH);
-  display.firstPage();
-  do {
-    display.fillRect(L.boxX, L.headerY, L.boxW, L.boxH, GxEPD_WHITE);
-    drawTextBox(mosqueName ? mosqueName : "Mosque Name",
-                L.boxX, L.headerY, L.boxW, L.boxH, &FreeMonoBold9pt7b);
-  } while (display.nextPage());
+// // ===== Partial: الهيدر ("Mosque Name" + "Prayer in") =====
+// static void redrawHeaderRegion(const Layout& L, const char* mosqueName) {
+//   // صندوق الاسم
+//   display.setPartialWindow(L.boxX, L.headerY, L.boxW, L.boxH);
+//   display.firstPage();
+//   do {
+//     display.fillRect(L.boxX, L.headerY, L.boxW, L.boxH, GxEPD_WHITE);
+//     drawTextBox(mosqueName ? mosqueName : "Mosque Name",
+//                 L.boxX, L.headerY, L.boxW, L.boxH, &FreeMonoBold9pt7b);
+//   } while (display.nextPage());
 
-  // سطر "Prayer in"
-  // احسب أبعاد النص ورسمه ضمن نافذة جزئية صغيرة
-  const char* label = "Prayer in";
-  display.setFont(&FreeMonoBold9pt7b);
-  int16_t x1, y1; uint16_t w, h;
-  display.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
-  int16_t topY = L.headerY + L.boxH + L.spacing;
-  int16_t centerX = 400;
-  int16_t textX = centerX - w/2 - x1;
-  int16_t textY = topY - y1;
+//   // سطر "Prayer in"
+//   // احسب أبعاد النص ورسمه ضمن نافذة جزئية صغيرة
+//   const char* label = "Prayer in";
+//   display.setFont(&FreeMonoBold9pt7b);
+//   int16_t x1, y1; uint16_t w, h;
+//   display.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
+//   int16_t topY = L.headerY + L.boxH + L.spacing;
+//   int16_t centerX = 400;
+//   int16_t textX = centerX - w/2 - x1;
+//   int16_t textY = topY - y1;
 
-  display.setPartialWindow(textX - 2, topY - 2, w + 4, h + 4);
-  display.firstPage();
-  do {
-    display.fillRect(textX - 2, topY - 2, w + 4, h + 4, GxEPD_WHITE);
-    drawCenteredText(label, centerX, topY, &FreeMonoBold9pt7b);
-  } while (display.nextPage());
-}
+//   display.setPartialWindow(textX - 2, topY - 2, w + 4, h + 4);
+//   display.firstPage();
+//   do {
+//     display.fillRect(textX - 2, topY - 2, w + 4, h + 4, GxEPD_WHITE);
+//     drawCenteredText(label, centerX, topY, &FreeMonoBold9pt7b);
+//   } while (display.nextPage());
+// }
 
-//---------------------------------------helpers for screen---------------------------------
+// //---------------------------------------helpers for screen---------------------------------
 
 
 //--------------------------------------------------------------------------
@@ -402,49 +405,32 @@ void executeMainTask() {
   Serial.println("✨══════•••••••••••••••••••••••••••••••••••══════✨");
 
     // ---------- E-paper display ----------
-    // ===== E-paper display: Full أول مرة ثم Partial =====
-const char* prayerNames[5] = {"Fajr","Dhuhr","Asr","Maghrib","Isha"};
-const char* prayerTimes[5] = { FAJR.c_str(), DHUHR.c_str(), ASR.c_str(), MAGHRIB.c_str(), ISHA.c_str() };
-int highlightIndex = getNextPrayerIndex(prayerTimes, 5, timeinfo.tm_hour, timeinfo.tm_min);
 
-Layout L = computeLayout();
-const char* MOSQUE_NAME = "Mosque Name"; // غيّرها إذا عندك اسم المسجد
+
+const char* PRAYER_NAMES_ROW[5] = {"Fajr","Dhuhr","Asr","Maghrib","Isha"};
+const char* prayerTimesRow[5]   = {
+  FAJR.c_str(), DHUHR.c_str(), ASR.c_str(), MAGHRIB.c_str(), ISHA.c_str()
+};
+GxEPD2Adapter<decltype(display)> epdAdapter(display);
+ScreenUI ui(epdAdapter, /*screenW*/800, /*screenH*/480);
+ScreenLayout L = ui.computeLayout();
+
+int highlightIndex = ScreenUI::getNextPrayerIndex(prayerTimesRow, timeinfo.tm_hour, timeinfo.tm_min);
+const char* MOSQUE_NAME = "Mosque Name";
 
 if (!g_renderState.initialized) {
-  // أول مرة: رسم كامل (مثل ما كان عندك)
-  display.setFullWindow();
-  display.firstPage();
-  do {
-    display.fillScreen(GxEPD_WHITE);
-
-    int16_t currentY = L.headerY;
-    drawTextBox(MOSQUE_NAME, L.boxX, currentY, L.boxW, L.boxH, &FreeMonoBold9pt7b);
-
-    currentY += L.boxH + L.spacing;
-    drawCenteredText("Prayer in", 400, currentY, &FreeMonoBold9pt7b);
-
-    currentY += 30;
-    drawTextBox(countdownStr, L.boxX, L.countdownY, L.countdownW, L.countdownH, &FreeMonoBold24pt7b);
-
-    drawPrayerTimeBoxes(prayerNames, prayerTimes, 5, L.rowY, L.prayerBoxW, L.prayerBoxH, L.prayerSpacing, highlightIndex);
-  } while (display.nextPage());
+  ui.fullRender(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, prayerTimesRow, highlightIndex);
 } else {
-  // 🔒 مسار آمن: ارسم كل المناطق المهمة كـ partial كل مرة
-  redrawHeaderRegion(L, MOSQUE_NAME);                       // الهيدر
-  redrawCountdownRegion(L, countdownStr);                   // العدّ
-  redrawPrayerRowRegion(L, prayerNames, prayerTimes, highlightIndex); // صف المواقيت
+  ui.partialRender(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, prayerTimesRow, highlightIndex);
 }
 
-// خزّن الحالة (اختياري لو لاحقاً بدك تخفف الرسم)
+// persist (optional)
 g_renderState.initialized   = true;
 g_renderState.lastHighlight = highlightIndex;
-snprintf(g_renderState.times[0], sizeof g_renderState.times[0], "%s", prayerTimes[0]);
-snprintf(g_renderState.times[1], sizeof g_renderState.times[1], "%s", prayerTimes[1]);
-snprintf(g_renderState.times[2], sizeof g_renderState.times[2], "%s", prayerTimes[2]);
-snprintf(g_renderState.times[3], sizeof g_renderState.times[3], "%s", prayerTimes[3]);
-snprintf(g_renderState.times[4], sizeof g_renderState.times[4], "%s", prayerTimes[4]);
+for (int i = 0; i < 5; ++i) {
+snprintf(g_renderState.times[i], sizeof g_renderState.times[i], "%s", prayerTimesRow[i]);
 
-
+}
 }
 
 //-------------------------end main execute-------------------------------------
