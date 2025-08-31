@@ -39,14 +39,16 @@ void ScreenUI::fullRender(const ScreenLayout& L,
     d_.fillScreen(GxEPD_WHITE);
 
     int16_t currentY = L.headerY;
+    // Use Cairo font for header (mosque name)
     drawTextBox(mosqueName ? mosqueName : "Mosque Name",
-                L.boxX, currentY, L.boxW, L.boxH, &FreeMonoBold9pt7b);
+                L.boxX, currentY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
 
     currentY += L.boxH + L.spacing;
-    drawCenteredText("Prayer in", W_/2, currentY, &FreeMonoBold9pt7b);
+    drawCenteredText("Prayer in", W_/2, currentY, &Cairo_Bold9pt7b);
 
     currentY += 30;
-    drawTextBox(countdownStr, L.boxX, L.countdownY, L.countdownW, L.countdownH, &FreeMonoBold24pt7b);
+    // Use larger Cairo font for countdown
+    drawTextBox(countdownStr, L.boxX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold40pt7b);
 
     drawPrayerTimeBoxes(const_cast<const char**>(prayerNames),
                         const_cast<const char**>(prayerTimes),
@@ -117,7 +119,8 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
       d_.fillRect(x, startY, boxW, boxH, GxEPD_BLACK);
       d_.drawRect(x, startY, boxW, boxH, GxEPD_BLACK);
 
-      d_.setFont(&FreeMonoBold9pt7b);
+      // Use smaller Cairo font for prayer names
+      d_.setFont(&Cairo_Bold9pt7b);
       int16_t x1, y1; uint16_t w, h;
       d_.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
       int16_t nameX = x + (boxW - w) / 2 - x1;
@@ -126,7 +129,8 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
       d_.setCursor(nameX, nameY);
       d_.print(names[i]);
 
-      d_.setFont(&FreeMonoBold18pt7b);
+      // Use medium Cairo font for prayer times
+      d_.setFont(&Cairo_Bold24pt7b);
       d_.getTextBounds(times[i], 0, 0, &x1, &y1, &w, &h);
       int16_t timeX = x + (boxW - w) / 2 - x1;
       int16_t timeY = startY + boxH - 12;
@@ -135,7 +139,7 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
     } else {
       d_.drawRect(x, startY, boxW, boxH, GxEPD_BLACK);
 
-      d_.setFont(&FreeMonoBold9pt7b);
+      d_.setFont(&Cairo_Bold9pt7b);
       int16_t x1, y1; uint16_t w, h;
       d_.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
       int16_t nameX = x + (boxW - w) / 2 - x1;
@@ -144,7 +148,7 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
       d_.setCursor(nameX, nameY);
       d_.print(names[i]);
 
-      d_.setFont(&FreeMonoBold18pt7b);
+      d_.setFont(&Cairo_Bold24pt7b);
       d_.getTextBounds(times[i], 0, 0, &x1, &y1, &w, &h);
       int16_t timeX = x + (boxW - w) / 2 - x1;
       int16_t timeY = startY + boxH - 12;
@@ -159,7 +163,7 @@ void ScreenUI::redrawCountdownRegion(const ScreenLayout& L, const char* countdow
   d_.firstPage();
   do {
     d_.fillRect(L.boxX, L.countdownY, L.countdownW, L.countdownH, GxEPD_WHITE);
-    drawTextBox(countdownStr, L.boxX, L.countdownY, L.countdownW, L.countdownH, &FreeMonoBold24pt7b);
+    drawTextBox(countdownStr, L.boxX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold40pt7b);
   } while (d_.nextPage());
 }
 
@@ -182,11 +186,11 @@ void ScreenUI::redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName)
   do {
     d_.fillRect(L.boxX, L.headerY, L.boxW, L.boxH, GxEPD_WHITE);
     drawTextBox(mosqueName ? mosqueName : "Mosque Name",
-                L.boxX, L.headerY, L.boxW, L.boxH, &FreeMonoBold9pt7b);
+                L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
   } while (d_.nextPage());
 
   const char* label = "Prayer in";
-  d_.setFont(&FreeMonoBold9pt7b);
+  d_.setFont(&Cairo_Bold9pt7b);
   int16_t x1, y1; uint16_t w, h;
   d_.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
   int16_t topY = L.headerY + L.boxH + L.spacing;
@@ -198,6 +202,6 @@ void ScreenUI::redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName)
   d_.firstPage();
   do {
     d_.fillRect(textX - 2, topY - 2, w + 4, h + 4, GxEPD_WHITE);
-    drawCenteredText(label, centerX, topY, &FreeMonoBold9pt7b);
+    drawCenteredText(label, centerX, topY, &Cairo_Bold9pt7b);
   } while (d_.nextPage());
 }

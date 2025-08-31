@@ -3,9 +3,13 @@
 #include <Arduino.h>
 #include <gfxfont.h>
 #include "IEpaper.h"
-#include <Fonts/FreeMonoBold9pt7b.h>
-#include <Fonts/FreeMonoBold18pt7b.h>
-#include <Fonts/FreeMonoBold24pt7b.h>
+
+// Cairo Google Fonts - converted to Adafruit GFX format
+#include "fonts/Cairo_Bold7pt7b.h"
+#include "fonts/Cairo_Bold9pt7b.h"
+#include "fonts/Cairo_Bold24pt7b.h"
+#include "fonts/Cairo_Bold40pt7b.h"
+// #include "fonts/Cairo_Bold70pt7b.h"  // Comment out problematic font
 
 struct ScreenLayout {
   int16_t boxX, boxW, boxH, spacing;
@@ -23,7 +27,7 @@ struct RenderStatePersist {
 
 class ScreenUI {
 public:
-  // pass screen size (800x480) so we don’t depend on a specific panel
+  // pass screen size (800x480) so we don't depend on a specific panel
   ScreenUI(IEpaper& epd, int16_t screenW, int16_t screenH);
 
   ScreenLayout computeLayout() const;

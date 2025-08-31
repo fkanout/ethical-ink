@@ -19,6 +19,7 @@
 #include "ScreenUI.h"
 #include "GxEPD2Adapter.h"
 
+
 // Pins for E-paper
 #define EPD_CS   10
 #define EPD_DC   9
@@ -519,7 +520,7 @@ void handleSyncingTime() {
   RTCManager &rtc = RTCManager::getInstance();
   if (rtc.syncTimeFromNTPWithOffset(3, 10000)) {
     Serial.println("✅ Time synced successfully");
-    // rtc.setTimeToSpecificHourAndMinute(22, 0, 5, 2);
+   // rtc.setTimeToSpecificHourAndMinute(20, 07, 5, 2); // for testing time 
     state = RUNNING_MAIN_TASK;
   } else {
     Serial.println("❌ Failed to sync time");
@@ -701,12 +702,12 @@ void fetchUserEvents() {
 
 void handlePeriodicTasks() {
   Serial.println("🔄 Running periodic tasks...");
-  if (shouldFetchBasedOnInterval(rtcData.userEventsUpdateMillis,
-                                 userEventsUpdateInterval, "USER_EVENTS")) {
-    fetchUserEvents();
-    return;
-  }
-  Serial.println("⚠️ User events do not need to be fetched.");
+  // if (shouldFetchBasedOnInterval(rtcData.userEventsUpdateMillis,
+  //                                userEventsUpdateInterval, "USER_EVENTS")) {
+  //  // fetchUserEvents();
+  //   return;
+  // }
+  // Serial.println("⚠️ User events do not need to be fetched.");
   if (shouldFetchBasedOnInterval(rtcData.mosqueLastUpdateMillis,
                                  mosqueUpdateInterval, "MOSQUE_DATA")) {
     fetchPrayerTimesIfDue();
