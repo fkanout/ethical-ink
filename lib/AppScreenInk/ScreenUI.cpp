@@ -14,16 +14,29 @@ ScreenUI::ScreenUI(IEpaper& epd, int16_t screenW, int16_t screenH)
 
 ScreenLayout ScreenUI::computeLayout() const {
   ScreenLayout L;
-  L.boxW = 200; L.boxH = 60; L.spacing = 20;
-  L.boxX = (W_ - L.boxW) / 2;
-  L.headerY = 10;
-  L.countdownY = L.headerY + L.boxH + L.spacing + 30;
-  L.countdownW = 200; L.countdownH = 100;
 
-  L.rowY = 300; L.prayerBoxW = 140; L.prayerBoxH = 90; L.prayerSpacing = 10;
+  // Optimized for 800x480 display
+  L.boxW = W_ * 0.4;        // 40% of screen width (320px)
+  L.boxH = 80;              // Taller header box
+  L.spacing = 25;
+  L.boxX = (W_ - L.boxW) / 2;
+  L.headerY = 20;           // More top margin
+
+  // Countdown section - centered on screen
+  L.countdownW = W_ * 0.5;      // 50% of screen width (400px)
+  L.countdownH = 120;           // Taller for better font display
+  // Center vertically. (X will be computed where used to avoid changing the header struct.)
+  L.countdownY = (H_ - L.countdownH) / 2;
+
+  // Prayer times row
+  L.rowY = L.countdownY + L.countdownH + 40;      // Spacing below the centered countdown
+  L.prayerBoxW = (W_ - 60) / 5;                   // Divide screen evenly with margins
+  L.prayerBoxH = H_ - L.rowY - 30;                // Use remaining height
+  L.prayerSpacing = 10;
   const int count = 5;
   L.rowW = count * L.prayerBoxW + (count - 1) * L.prayerSpacing;
   L.rowStartX = (W_ - L.rowW) / 2;
+
   return L;
 }
 
@@ -38,18 +51,19 @@ void ScreenUI::fullRender(const ScreenLayout& L,
   do {
     d_.fillScreen(GxEPD_WHITE);
 
-    int16_t currentY = L.headerY;
-    // Use Cairo font for header (mosque name)
+    // Header (mosque name)
     drawTextBox(mosqueName ? mosqueName : "Mosque Name",
-                L.boxX, currentY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
+                L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
 
-    currentY += L.boxH + L.spacing;
-    drawCenteredText("Prayer in", W_/2, currentY, &Cairo_Bold9pt7b);
+    // "Prayer in" label just above the centered countdown
+    const int16_t countdownX = (W_ - L.countdownW) / 2;
+    const int16_t labelTopY   = L.countdownY - 60; // adjust spacing above countdown
+    drawCenteredText("Prayer in", W_/2, labelTopY, &Cairo_Bold24pt7b);
 
-    currentY += 30;
-    // Use larger Cairo font for countdown
-    drawTextBox(countdownStr, L.boxX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold40pt7b);
+    // Centered countdown box
+    drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold40pt7b);
 
+    // Prayer time boxes row
     drawPrayerTimeBoxes(const_cast<const char**>(prayerNames),
                         const_cast<const char**>(prayerTimes),
                         5, L.rowY, L.prayerBoxW, L.prayerBoxH, L.prayerSpacing, highlightIndex);
@@ -83,7 +97,7 @@ void ScreenUI::drawTextBox(const char* text, int16_t x, int16_t y, int16_t wBox,
   int16_t x1, y1; uint16_t w, h;
   d_.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
 
-  d_.drawRect(x, y, wBox, hBox, GxEPD_BLACK);
+  d_.drawRect(x, y, wBox, hBox, GxEPD_BLACK);   // this is for the box rounded 
 
   int16_t textX = x + (wBox - w) / 2 - x1;
   int16_t textY = y + (hBox - h) / 2 - y1;
@@ -119,21 +133,21 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
       d_.fillRect(x, startY, boxW, boxH, GxEPD_BLACK);
       d_.drawRect(x, startY, boxW, boxH, GxEPD_BLACK);
 
-      // Use smaller Cairo font for prayer names
+      // Name (medium)
       d_.setFont(&Cairo_Bold9pt7b);
       int16_t x1, y1; uint16_t w, h;
       d_.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
       int16_t nameX = x + (boxW - w) / 2 - x1;
-      int16_t nameY = startY + 20;
+      int16_t nameY = startY + 25;
       d_.setTextColor(GxEPD_WHITE);
       d_.setCursor(nameX, nameY);
       d_.print(names[i]);
 
-      // Use medium Cairo font for prayer times
+      // Time (large)
       d_.setFont(&Cairo_Bold24pt7b);
       d_.getTextBounds(times[i], 0, 0, &x1, &y1, &w, &h);
       int16_t timeX = x + (boxW - w) / 2 - x1;
-      int16_t timeY = startY + boxH - 12;
+      int16_t timeY = startY + boxH - 20;
       d_.setCursor(timeX, timeY);
       d_.print(times[i]);
     } else {
@@ -143,7 +157,7 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
       int16_t x1, y1; uint16_t w, h;
       d_.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
       int16_t nameX = x + (boxW - w) / 2 - x1;
-      int16_t nameY = startY + 20;
+      int16_t nameY = startY + 25;
       d_.setTextColor(GxEPD_BLACK);
       d_.setCursor(nameX, nameY);
       d_.print(names[i]);
@@ -151,7 +165,7 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
       d_.setFont(&Cairo_Bold24pt7b);
       d_.getTextBounds(times[i], 0, 0, &x1, &y1, &w, &h);
       int16_t timeX = x + (boxW - w) / 2 - x1;
-      int16_t timeY = startY + boxH - 12;
+      int16_t timeY = startY + boxH - 20;
       d_.setCursor(timeX, timeY);
       d_.print(times[i]);
     }
@@ -159,11 +173,12 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
 }
 
 void ScreenUI::redrawCountdownRegion(const ScreenLayout& L, const char* countdownStr) {
-  d_.setPartialWindow(L.boxX, L.countdownY, L.countdownW, L.countdownH);
+  const int16_t countdownX = (W_ - L.countdownW) / 2;
+  d_.setPartialWindow(countdownX, L.countdownY, L.countdownW, L.countdownH);
   d_.firstPage();
   do {
-    d_.fillRect(L.boxX, L.countdownY, L.countdownW, L.countdownH, GxEPD_WHITE);
-    drawTextBox(countdownStr, L.boxX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold40pt7b);
+    d_.fillRect(countdownX, L.countdownY, L.countdownW, L.countdownH, GxEPD_WHITE);
+    drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold40pt7b);
   } while (d_.nextPage());
 }
 
@@ -181,6 +196,7 @@ void ScreenUI::redrawPrayerRowRegion(const ScreenLayout& L,
 }
 
 void ScreenUI::redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName) {
+  // Header box
   d_.setPartialWindow(L.boxX, L.headerY, L.boxW, L.boxH);
   d_.firstPage();
   do {
@@ -189,19 +205,20 @@ void ScreenUI::redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName)
                 L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
   } while (d_.nextPage());
 
+  // "Prayer in" label above the centered countdown
   const char* label = "Prayer in";
   d_.setFont(&Cairo_Bold9pt7b);
   int16_t x1, y1; uint16_t w, h;
   d_.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
-  int16_t topY = L.headerY + L.boxH + L.spacing;
-  int16_t centerX = W_/2;
-  int16_t textX = centerX - w/2 - x1;
-  int16_t textY = topY - y1;
+  const int16_t centerX = W_/2;
+  const int16_t topY = L.countdownY - 60; // keep consistent with fullRender
+  const int16_t textX = centerX - w/2 - x1;
+  const int16_t textY = topY - y1;
 
   d_.setPartialWindow(textX - 2, topY - 2, w + 4, h + 4);
   d_.firstPage();
   do {
     d_.fillRect(textX - 2, topY - 2, w + 4, h + 4, GxEPD_WHITE);
-    drawCenteredText(label, centerX, topY, &Cairo_Bold9pt7b);
+    drawCenteredText(label, centerX, topY, &Cairo_Bold24pt7b);
   } while (d_.nextPage());
 }
