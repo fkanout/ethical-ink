@@ -16,15 +16,15 @@ ScreenLayout ScreenUI::computeLayout() const {
   ScreenLayout L;
 
   // Optimized for 800x480 display
-  L.boxW = W_ * 0.4;        // 40% of screen width (320px)
-  L.boxH = 80;              // Taller header box
+  L.boxW = W_ * 0.2;        // 40% of screen width (320px)
+  L.boxH = 70;              // Taller header box
   L.spacing = 25;
   L.boxX = (W_ - L.boxW) / 2;
   L.headerY = 20;           // More top margin
 
   // Countdown section - centered on screen
-  L.countdownW = W_ * 0.5;      // 50% of screen width (400px)
-  L.countdownH = 120;           // Taller for better font display
+  L.countdownW = W_ * 0.3;      // 50% of screen width (400px)
+  L.countdownH = 100;           // Taller for better font di splay
   // Center vertically. (X will be computed where used to avoid changing the header struct.)
   L.countdownY = (H_ - L.countdownH) / 2;
 
@@ -57,7 +57,7 @@ void ScreenUI::fullRender(const ScreenLayout& L,
 
     // "Prayer in" label just above the centered countdown
     const int16_t countdownX = (W_ - L.countdownW) / 2;
-    const int16_t labelTopY   = L.countdownY - 60; // adjust spacing above countdown
+    const int16_t labelTopY   = L.countdownY - 70; // adjust spacing above countdown
     drawCenteredText("Prayer in", W_/2, labelTopY, &Cairo_Bold24pt7b);
 
     // Centered countdown box
@@ -211,7 +211,7 @@ void ScreenUI::redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName)
   int16_t x1, y1; uint16_t w, h;
   d_.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
   const int16_t centerX = W_/2;
-  const int16_t topY = L.countdownY - 60; // keep consistent with fullRender
+  const int16_t topY = L.countdownY - 70; // keep consistent with fullRender
   const int16_t textX = centerX - w/2 - x1;
   const int16_t textY = topY - y1;
 
