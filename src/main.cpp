@@ -52,6 +52,7 @@ bool isFetching = false;
 
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
+String mosqueName = "Mosque Name"; // Default fallback name
 
 //--------------------------------------------------------------------------
 bool shouldFetchBasedOnInterval(unsigned long lastUpdateSeconds,

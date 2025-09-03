@@ -8,12 +8,15 @@ public:
   using FetchCallback = std::function<void(bool success, const char *filePath)>;
 
   static MAWAQITManager &getInstance();
+  
 
   // Set your MAWAQIT API key before calling asyncFetchPrayerTimes
   void setApiKey(const String &key);
 
   // Launch non-blocking prayer time fetch with retry and validation
   void asyncFetchPrayerTimes(const String &mosqueUUID, FetchCallback callback);
+  
+  void asyncFetchMosqueInfo(const String &mosqueUUID, FetchCallback callback);
 
 private:
   MAWAQITManager() = default;
@@ -26,4 +29,11 @@ private:
     String mosqueUUID;
     FetchCallback callback;
   };
+
+  struct InfoFetchParams {
+  String mosqueUUID;
+  FetchCallback callback;
+};
+static void fetchInfoTask(void *parameter);
+TaskHandle_t fetchInfoTaskHandle = nullptr;
 };
