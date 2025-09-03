@@ -54,6 +54,7 @@ private:
 
   void drawTextBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font);
   void drawCenteredText(const char* text, int16_t centerX, int16_t topY, const GFXfont* font);
+  void drawTextWithoutBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font);
   void drawPrayerTimeBoxes(const char* names[], const char* times[], int count,
                            int16_t startY, int16_t boxW, int16_t boxH, int16_t spacing,
                            int highlightIndex);

@@ -52,8 +52,8 @@ void ScreenUI::fullRender(const ScreenLayout& L,
     d_.fillScreen(GxEPD_WHITE);
 
     // Header (mosque name)
-    drawTextBox(mosqueName ? mosqueName : "Mosque Name",
-                L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
+   drawTextWithoutBox(mosqueName ? mosqueName : "Mosque Name",
+                  L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
 
     // "Prayer in" label just above the centered countdown
     const int16_t countdownX = (W_ - L.countdownW) / 2;
@@ -98,6 +98,22 @@ void ScreenUI::drawTextBox(const char* text, int16_t x, int16_t y, int16_t wBox,
   d_.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
 
   d_.drawRect(x, y, wBox, hBox, GxEPD_BLACK);   // this is for the box rounded 
+
+  int16_t textX = x + (wBox - w) / 2 - x1;
+  int16_t textY = y + (hBox - h) / 2 - y1;
+
+  d_.setTextColor(GxEPD_BLACK);
+  d_.setCursor(textX, textY);
+  d_.print(text);
+}
+
+// Add this new function to your ScreenUI.cpp file:
+void ScreenUI::drawTextWithoutBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font) {
+  d_.setFont(font);
+  int16_t x1, y1; uint16_t w, h;
+  d_.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+
+  // No box drawing - just the text
 
   int16_t textX = x + (wBox - w) / 2 - x1;
   int16_t textY = y + (hBox - h) / 2 - y1;
@@ -201,8 +217,8 @@ void ScreenUI::redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName)
   d_.firstPage();
   do {
     d_.fillRect(L.boxX, L.headerY, L.boxW, L.boxH, GxEPD_WHITE);
-    drawTextBox(mosqueName ? mosqueName : "Mosque Name",
-                L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
+     drawTextWithoutBox(mosqueName ? mosqueName : "Mosque Name",
+                   L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
   } while (d_.nextPage());
 
   // "Prayer in" label above the centered countdown
