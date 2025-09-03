@@ -61,5 +61,5 @@ private:
 
   void redrawCountdownRegion(const ScreenLayout& L, const char* countdownStr);
   void redrawPrayerRowRegion(const ScreenLayout& L, const char* names[5], const char* times[5], int highlightIndex);
-  void redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName);
+  void redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName, const char* headerLabel);
 };

@@ -58,7 +58,15 @@ void ScreenUI::fullRender(const ScreenLayout& L,
     // "Prayer in" label just above the centered countdown
     const int16_t countdownX = (W_ - L.countdownW) / 2;
     const int16_t labelTopY   = L.countdownY - 70; // adjust spacing above countdown
-    drawCenteredText("Prayer in", W_/2, labelTopY, &Cairo_Bold24pt7b);
+
+    // Pick the highlighted prayer name (fallback to "Prayer")
+    const char* hlName = (highlightIndex >= 0 && highlightIndex < 5 && prayerNames[highlightIndex])
+    ? prayerNames[highlightIndex]
+     : "Prayer";
+    char labelBuf[32];
+    snprintf(labelBuf, sizeof(labelBuf), "%s in", hlName);
+
+    drawCenteredText(labelBuf, W_/2, labelTopY, &Cairo_Bold24pt7b);
 
     // Centered countdown box
     drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold40pt7b);
@@ -71,14 +79,22 @@ void ScreenUI::fullRender(const ScreenLayout& L,
 }
 
 void ScreenUI::partialRender(const ScreenLayout& L,
-                             const char* mosqueName,
-                             const char* countdownStr,
-                             const char* prayerNames[5],
-                             const char* prayerTimes[5],
-                             int highlightIndex) {
-  redrawHeaderRegion(L, mosqueName);
-  redrawCountdownRegion(L, countdownStr);
-  redrawPrayerRowRegion(L, prayerNames, prayerTimes, highlightIndex);
+const char* mosqueName,
+const char* countdownStr,
+const char* prayerNames[5],
+const char* prayerTimes[5],
+int highlightIndex) {
+// Build header label from the currently highlighted prayer
+const char* hlName = (highlightIndex >= 0 && highlightIndex < 5 && prayerNames[highlightIndex])
+? prayerNames[highlightIndex]
+: "Prayer";
+char labelBuf[32];
+snprintf(labelBuf, sizeof(labelBuf), "%s in", hlName);
+
+
+redrawHeaderRegion(L, mosqueName, labelBuf);
+redrawCountdownRegion(L, countdownStr);
+redrawPrayerRowRegion(L, prayerNames, prayerTimes, highlightIndex);
 }
 
 int ScreenUI::getNextPrayerIndex(const char* times[5], int currentHour, int currentMin) {
@@ -211,30 +227,34 @@ void ScreenUI::redrawPrayerRowRegion(const ScreenLayout& L,
   } while (d_.nextPage());
 }
 
-void ScreenUI::redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName) {
-  // Header box
-  d_.setPartialWindow(L.boxX, L.headerY, L.boxW, L.boxH);
-  d_.firstPage();
-  do {
-    d_.fillRect(L.boxX, L.headerY, L.boxW, L.boxH, GxEPD_WHITE);
-     drawTextWithoutBox(mosqueName ? mosqueName : "Mosque Name",
-                   L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
-  } while (d_.nextPage());
+void ScreenUI::redrawHeaderRegion(const ScreenLayout& L,
+const char* mosqueName,
+const char* headerLabel) {
+// Header box (mosque name)
+d_.setPartialWindow(L.boxX, L.headerY, L.boxW, L.boxH);
+d_.firstPage();
+do {
+d_.fillRect(L.boxX, L.headerY, L.boxW, L.boxH, GxEPD_WHITE);
+drawTextWithoutBox(mosqueName ? mosqueName : "Mosque Name",
+L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
+} while (d_.nextPage());
 
-  // "Prayer in" label above the centered countdown
-  const char* label = "Prayer in";
-  d_.setFont(&Cairo_Bold9pt7b);
-  int16_t x1, y1; uint16_t w, h;
-  d_.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
-  const int16_t centerX = W_/2;
-  const int16_t topY = L.countdownY - 70; // keep consistent with fullRender
-  const int16_t textX = centerX - w/2 - x1;
-  const int16_t textY = topY - y1;
 
-  d_.setPartialWindow(textX - 2, topY - 2, w + 4, h + 4);
-  d_.firstPage();
-  do {
-    d_.fillRect(textX - 2, topY - 2, w + 4, h + 4, GxEPD_WHITE);
-    drawCenteredText(label, centerX, topY, &Cairo_Bold24pt7b);
-  } while (d_.nextPage());
+// Centered label above the countdown (e.g., "Asr in")
+const char* label = (headerLabel && headerLabel[0]) ? headerLabel : "Prayer in";
+d_.setFont(&Cairo_Bold9pt7b);
+int16_t x1, y1; uint16_t w, h;
+d_.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
+const int16_t centerX = W_/2;
+const int16_t topY = L.countdownY - 70; // keep consistent with fullRender
+const int16_t textX = centerX - w/2 - x1;
+const int16_t textY = topY - y1;
+
+
+d_.setPartialWindow(textX - 2, topY - 2, w + 4, h + 4);
+d_.firstPage();
+do {
+d_.fillRect(textX - 2, topY - 2, w + 4, h + 4, GxEPD_WHITE);
+drawCenteredText(label, centerX, topY, &Cairo_Bold24pt7b);
+} while (d_.nextPage());
 }
