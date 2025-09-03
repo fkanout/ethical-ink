@@ -225,66 +225,87 @@ void executeMainTask() {
   Serial.printf("  ⏳%s in %02d:%02d\n", nextPrayerInfo.name.c_str(), countdown.hours, countdown.minutes);
   Serial.println("✨══════•••••••••••••••••••••••••••••••••••══════✨");
 
-    // ---------- E-paper display ----------
+  // ---------- E-paper display ----------
+  const char* PRAYER_NAMES_ROW[5] = {"Fajr","Dhuhr","Asr","Maghrib","Isha"};
+  const char* prayerTimesRow[5]   = {
+    FAJR.c_str(), DHUHR.c_str(), ASR.c_str(), MAGHRIB.c_str(), ISHA.c_str()
+  };
+  GxEPD2Adapter<decltype(display)> epdAdapter(display);
+  ScreenUI ui(epdAdapter, /*screenW*/800, /*screenH*/480);
+  ScreenLayout L = ui.computeLayout();
 
+  int highlightIndex = ScreenUI::getNextPrayerIndex(prayerTimesRow, timeinfo.tm_hour, timeinfo.tm_min);
+  
+  // Use the fetched mosque name instead of hardcoded value
+  const char* MOSQUE_NAME = mosqueName.c_str();
 
-const char* PRAYER_NAMES_ROW[5] = {"Fajr","Dhuhr","Asr","Maghrib","Isha"};
-const char* prayerTimesRow[5]   = {
-  FAJR.c_str(), DHUHR.c_str(), ASR.c_str(), MAGHRIB.c_str(), ISHA.c_str()
-};
-GxEPD2Adapter<decltype(display)> epdAdapter(display);
-ScreenUI ui(epdAdapter, /*screenW*/800, /*screenH*/480);
-ScreenLayout L = ui.computeLayout();
+  if (!g_renderState.initialized) {
+    ui.fullRender(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, prayerTimesRow, highlightIndex);
+  } else {
+    ui.partialRender(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, prayerTimesRow, highlightIndex);
+  }
 
-int highlightIndex = ScreenUI::getNextPrayerIndex(prayerTimesRow, timeinfo.tm_hour, timeinfo.tm_min);
-const char* MOSQUE_NAME = "Mosque Name";
-
-if (!g_renderState.initialized) {
-  ui.fullRender(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, prayerTimesRow, highlightIndex);
-} else {
-  ui.partialRender(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, prayerTimesRow, highlightIndex);
-}
-
-// persist (optional)
-g_renderState.initialized   = true;
-g_renderState.lastHighlight = highlightIndex;
-for (int i = 0; i < 5; ++i) {
-snprintf(g_renderState.times[i], sizeof g_renderState.times[i], "%s", prayerTimesRow[i]);
-
-}
+  // persist (optional)
+  g_renderState.initialized   = true;
+  g_renderState.lastHighlight = highlightIndex;
+  for (int i = 0; i < 5; ++i) {
+    snprintf(g_renderState.times[i], sizeof g_renderState.times[i], "%s", prayerTimesRow[i]);
+  }
 }
 
 //-------------------------end main execute-------------------------------------
 void fetchPrayerTimesIfDue() {
-  Serial.println("📡 Fetching prayer times from MAWAQIT...");
+  Serial.println("📡 Fetching prayer times and mosque info from MAWAQIT...");
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
 
   WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
-    Serial.println(
-        "❌ Failed to connect to Wi-Fi to fetch prayer times if due");
-    // Track this state to show in the UI and stop keeping the device awake each
-    // time
-
+    Serial.println("❌ Failed to connect to Wi-Fi to fetch prayer times if due");
     state = SLEEPING;
   });
+  
   WiFiManager::getInstance().onWifiConnectedCallback([]() {
     Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
-    MAWAQITManager::getInstance().setApiKey(
-        "86ed48fd-691e-4370-a9bf-ae74f788ed54");
-    MAWAQITManager::getInstance().asyncFetchPrayerTimes(
+    MAWAQITManager::getInstance().setApiKey("86ed48fd-691e-4370-a9bf-ae74f788ed54");
+    
+    // First fetch mosque info to get the name
+    MAWAQITManager::getInstance().asyncFetchMosqueInfo(
         "f9a51508-05b7-4324-a7e8-4acbc2893c02",
         [](bool success, const char *path) {
           if (success) {
-            Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
-            splitCalendarJson(MOSQUE_FILE);
-            splitCalendarJson(MOSQUE_FILE, true);
-            rtcData.mosqueLastUpdateMillis =
-                RTCManager::getInstance().getEpochTime();
-            AppStateManager::save();
+            Serial.printf("📂 Mosque info file ready at: %s\n", path);
+            
+            // Read and parse the mosque info to extract the name
+            File file = SPIFFS.open("/mosque_info.json", FILE_READ);
+            if (file) {
+              String json = file.readString();
+              file.close();
+              
+              DynamicJsonDocument doc(2048);
+              DeserializationError error = deserializeJson(doc, json);
+              if (!error && doc.containsKey("name")) {
+                mosqueName = doc["name"].as<String>();
+                Serial.printf("🕌 Updated mosque name: %s\n", mosqueName.c_str());
+              }
+            }
           } else {
-            Serial.println("⚠️ Failed to fetch valid data after retries.");
+            Serial.println("⚠️ Failed to fetch mosque info. Using default name.");
           }
-          state = SLEEPING;
+          
+          // Now fetch prayer times
+          MAWAQITManager::getInstance().asyncFetchPrayerTimes(
+              "f9a51508-05b7-4324-a7e8-4acbc2893c02",
+              [](bool success, const char *path) {
+                if (success) {
+                  Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
+                  splitCalendarJson(MOSQUE_FILE);
+                  splitCalendarJson(MOSQUE_FILE, true);
+                  rtcData.mosqueLastUpdateMillis = RTCManager::getInstance().getEpochTime();
+                  AppStateManager::save();
+                } else {
+                  Serial.println("⚠️ Failed to fetch valid data after retries.");
+                }
+                state = SLEEPING;
+              });
         });
   });
 }
