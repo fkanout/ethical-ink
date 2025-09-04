@@ -7,9 +7,13 @@
 // Cairo Google Fonts - converted to Adafruit GFX format
 #include "fonts/Cairo_Bold7pt7b.h"
 #include "fonts/Cairo_Bold9pt7b.h"
+#include "fonts/Cairo_Bold12pt7b.h"
+#include "fonts/Cairo_Bold18pt7b.h"
 #include "fonts/Cairo_Bold24pt7b.h"
 #include "fonts/Cairo_Bold40pt7b.h"
-// #include "fonts/Cairo_Bold70pt7b.h"  // Comment out problematic font
+#include "fonts/Cairo_Bold45pt7b.h"
+#include "fonts/Cairo_Bold50pt7b.h"
+
 #include "StatusBar.h"
 
 struct ScreenLayout {

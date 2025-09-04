@@ -17,10 +17,10 @@ struct StatusInfo {
 
 class StatusBar {
 private:
-  static const int WIFI_ICON_WIDTH = 16;
-  static const int WIFI_ICON_HEIGHT = 12;
-  static const int BLE_ICON_WIDTH = 12;
-  static const int BLE_ICON_HEIGHT = 16;
+  static const int WIFI_ICON_WIDTH = 48;
+  static const int WIFI_ICON_HEIGHT = 32;
+  static const int BLE_ICON_WIDTH = 32;
+  static const int BLE_ICON_HEIGHT = 48;
   
 public:
   static StatusInfo getStatusInfo(bool bleAdvertising = false) {
@@ -148,14 +148,14 @@ private:
   static void drawWifiSignalBars(DisplayType& display, int x, int y, int bars) {
     // Draw WiFi signal bars (simplified representation)
     for (int i = 0; i < 4; i++) {
-      int barHeight = (i + 1) * 2 + 2;
-      int barX = x + (i * 3) + 2;
+      int barHeight = ((i + 1) * 2 + 2)*2;
+      int barX = x + (i * 5) + 2;
       int barY = y + WIFI_ICON_HEIGHT - barHeight;
       
       if (i < bars) {
-        display.fillRect(barX, barY, 2, barHeight, 0x0000);
+        display.fillRect(barX, barY, 3, barHeight, 0x0000);
       } else {
-        display.drawRect(barX, barY, 2, barHeight, 0x0000);
+        display.drawRect(barX, barY, 3, barHeight, 0x0000);
       }
     }
   }

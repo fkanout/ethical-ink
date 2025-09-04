@@ -14,7 +14,7 @@ ScreenUI::ScreenUI(IEpaper& epd, int16_t screenW, int16_t screenH)
 
 ScreenLayout ScreenUI::computeLayout() const {
   ScreenLayout L;
-  L.contentStartY = L.statusBarHeight + 10; // 10px margin after status bar
+  L.contentStartY = L.statusBarHeight + 5; // 10px margin after status bar
 
 
   // Optimized for 800x480 display
@@ -22,16 +22,16 @@ ScreenLayout ScreenUI::computeLayout() const {
   L.boxH = 60;              // Taller header box
   L.spacing = 20;
   L.boxX = (W_ - L.boxW) / 2;
-  L.headerY = L.contentStartY + 10;  // Start after status bar
+  L.headerY = L.contentStartY + 5;  // Start after status bar
 
   // Countdown section - centered on screen
   L.countdownW = W_ * 0.3;      // 50% of screen width (400px)
-  L.countdownH = 90;           // Taller for better font di splay
+  L.countdownH = 90;           // Taller for better font display
   // Center vertically. (X will be computed where used to avoid changing the header struct.)
-  L.countdownY = L.headerY + L.boxH + 40;
+  L.countdownY = L.headerY + L.boxH + 60;   // space undr the mosque name
 
   // Prayer times row
-  L.rowY = L.countdownY + L.countdownH + 30;      // Spacing below the centered countdown
+  L.rowY = L.countdownY + L.countdownH + 50;      // Spacing below the centered countdown
   L.prayerBoxW = (W_ - 60) / 5;                   // Divide screen evenly with margins
   L.prayerBoxH = H_ - L.rowY - 20;                // Use remaining height
   L.prayerSpacing = 10;
@@ -55,13 +55,13 @@ void ScreenUI::fullRenderWithStatusBar(const ScreenLayout& L,
     d_.fillScreen(0xFFFF); // White background
 
     // Draw status bar first
-    StatusBar::drawStatusBar(d_, W_, H_, statusInfo, &Cairo_Bold7pt7b);
+    StatusBar::drawStatusBar(d_, W_, H_, statusInfo, &Cairo_Bold12pt7b);
 
     // Header (mosque name)
     drawTextWithoutBox(mosqueName ? mosqueName : "Mosque Name",
                       L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
 
-    // "Prayer in" label
+    // "Prayer in" label - using smaller font (18pt instead of 24pt)
     const int16_t countdownX = (W_ - L.countdownW) / 2;
     const int16_t labelTopY = L.countdownY - 50;
 
@@ -70,10 +70,10 @@ void ScreenUI::fullRenderWithStatusBar(const ScreenLayout& L,
     char labelBuf[32];
     snprintf(labelBuf, sizeof(labelBuf), "%s in", hlName);
 
-    drawCenteredText(labelBuf, W_/2, labelTopY, &Cairo_Bold24pt7b);
+    drawCenteredText(labelBuf, W_/2, labelTopY, &Cairo_Bold18pt7b); // Changed from 24pt to 18pt
 
-    // Centered countdown box
-    drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold40pt7b);
+    // Centered countdown box - using 50pt font
+    drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold50pt7b);
 
     // Prayer time boxes row
     drawPrayerTimeBoxes(const_cast<const char**>(prayerNames),
@@ -111,7 +111,7 @@ void ScreenUI::redrawStatusBarRegion(const StatusInfo& statusInfo) {
   d_.firstPage();
   do {
     d_.fillRect(0, 0, W_, statusBarHeight, 0xFFFF); // White background
-    StatusBar::drawStatusBar(d_, W_, H_, statusInfo, &Cairo_Bold7pt7b);
+    StatusBar::drawStatusBar(d_, W_, H_, statusInfo, &Cairo_Bold12pt7b);
   } while (d_.nextPage());
 }
 
@@ -184,11 +184,11 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
       d_.drawRect(x, startY, boxW, boxH, GxEPD_BLACK);
 
       // Name (medium)
-      d_.setFont(&Cairo_Bold9pt7b);
+      d_.setFont(&Cairo_Bold18pt7b);
       int16_t x1, y1; uint16_t w, h;
       d_.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
       int16_t nameX = x + (boxW - w) / 2 - x1;
-      int16_t nameY = startY + 25;
+      int16_t nameY = startY + 40;
       d_.setTextColor(GxEPD_WHITE);
       d_.setCursor(nameX, nameY);
       d_.print(names[i]);
@@ -203,11 +203,11 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
     } else {
       d_.drawRect(x, startY, boxW, boxH, GxEPD_BLACK);
 
-      d_.setFont(&Cairo_Bold9pt7b);
+      d_.setFont(&Cairo_Bold18pt7b);
       int16_t x1, y1; uint16_t w, h;
       d_.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
       int16_t nameX = x + (boxW - w) / 2 - x1;
-      int16_t nameY = startY + 25;
+      int16_t nameY = startY + 40;  // Adjusted for smaller box height
       d_.setTextColor(GxEPD_BLACK);
       d_.setCursor(nameX, nameY);
       d_.print(names[i]);
@@ -215,7 +215,7 @@ void ScreenUI::drawPrayerTimeBoxes(const char* names[], const char* times[], int
       d_.setFont(&Cairo_Bold24pt7b);
       d_.getTextBounds(times[i], 0, 0, &x1, &y1, &w, &h);
       int16_t timeX = x + (boxW - w) / 2 - x1;
-      int16_t timeY = startY + boxH - 20;
+      int16_t timeY = startY + boxH - 15;  // Adjusted for smaller box height
       d_.setCursor(timeX, timeY);
       d_.print(times[i]);
     }
@@ -228,7 +228,7 @@ void ScreenUI::redrawCountdownRegion(const ScreenLayout& L, const char* countdow
   d_.firstPage();
   do {
     d_.fillRect(countdownX, L.countdownY, L.countdownW, L.countdownH, GxEPD_WHITE);
-    drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold40pt7b);
+    drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold50pt7b); // Already using 50pt
   } while (d_.nextPage());
 }
 
@@ -258,9 +258,9 @@ L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
 } while (d_.nextPage());
 
 
-// Centered label above the countdown (e.g., "Asr in")
+// Centered label above the countdown (e.g., "Asr in") - using smaller font (18pt instead of 24pt)
 const char* label = (headerLabel && headerLabel[0]) ? headerLabel : "Prayer in";
-d_.setFont(&Cairo_Bold24pt7b);            // measure with the SAME font we draw with
+d_.setFont(&Cairo_Bold18pt7b);            // Changed from 24pt to 18pt
 int16_t x1, y1; uint16_t w, h;
 d_.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
 const int16_t centerX = W_/2;
@@ -273,6 +273,6 @@ d_.setPartialWindow(textX - 2, topY - 2, w + 4, h + 4);
 d_.firstPage();
 do {
 d_.fillRect(textX - 2, topY - 2, w + 4, h + 4, GxEPD_WHITE);
-drawCenteredText(label, centerX, topY, &Cairo_Bold24pt7b);
+drawCenteredText(label, centerX, topY, &Cairo_Bold18pt7b); // Changed from 24pt to 18pt
 } while (d_.nextPage());
 }
