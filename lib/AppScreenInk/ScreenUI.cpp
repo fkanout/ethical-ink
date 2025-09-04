@@ -17,16 +17,18 @@ ScreenLayout ScreenUI::computeLayout() const {
   L.contentStartY = L.statusBarHeight + 5; // 10px margin after status bar
 
 
-  // Optimized for 800x480 display
-  L.boxW = W_ * 0.2;        // 40% of screen width (320px)
-  L.boxH = 60;              // Taller header box
+  // Optimized for 800x480 display  
+  // size boxes of prayers 
+  L.boxW = W_ * 0.4;        // 40% of screen width (320px)
+  L.boxH = 80;              // Taller header box
   L.spacing = 20;
   L.boxX = (W_ - L.boxW) / 2;
   L.headerY = L.contentStartY + 5;  // Start after status bar
 
   // Countdown section - centered on screen
-  L.countdownW = W_ * 0.3;      // 50% of screen width (400px)
-  L.countdownH = 90;           // Taller for better font display
+  // size box of countdown
+  L.countdownW = W_ * 0.4;      // 50% of screen width (400px)
+  L.countdownH = 120;           // Taller for better font display
   // Center vertically. (X will be computed where used to avoid changing the header struct.)
   L.countdownY = L.headerY + L.boxH + 60;   // space undr the mosque name
 
@@ -73,7 +75,7 @@ void ScreenUI::fullRenderWithStatusBar(const ScreenLayout& L,
     drawCenteredText(labelBuf, W_/2, labelTopY, &Cairo_Bold18pt7b); // Changed from 24pt to 18pt
 
     // Centered countdown box - using 50pt font
-    drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold50pt7b);
+    drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold60pt7b);
 
     // Prayer time boxes row
     drawPrayerTimeBoxes(const_cast<const char**>(prayerNames),
@@ -228,7 +230,7 @@ void ScreenUI::redrawCountdownRegion(const ScreenLayout& L, const char* countdow
   d_.firstPage();
   do {
     d_.fillRect(countdownX, L.countdownY, L.countdownW, L.countdownH, GxEPD_WHITE);
-    drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold50pt7b); // Already using 50pt
+    drawTextBox(countdownStr, countdownX, L.countdownY, L.countdownW, L.countdownH, &Cairo_Bold60pt7b); // Already using 50pt
   } while (d_.nextPage());
 }
 

@@ -13,6 +13,7 @@
 #include "fonts/Cairo_Bold40pt7b.h"
 #include "fonts/Cairo_Bold45pt7b.h"
 #include "fonts/Cairo_Bold50pt7b.h"
+#include "fonts/Cairo_Bold60pt7b.h"
 
 #include "StatusBar.h"
 
