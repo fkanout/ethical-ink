@@ -10,6 +10,7 @@
 #include "fonts/Cairo_Bold24pt7b.h"
 #include "fonts/Cairo_Bold40pt7b.h"
 // #include "fonts/Cairo_Bold70pt7b.h"  // Comment out problematic font
+#include "StatusBar.h"
 
 struct ScreenLayout {
   int16_t boxX, boxW, boxH, spacing;
@@ -17,6 +18,8 @@ struct ScreenLayout {
   int16_t countdownY;
   int16_t countdownW, countdownH;
   int16_t rowY, prayerBoxW, prayerBoxH, prayerSpacing, rowStartX, rowW;
+  static const int16_t statusBarHeight = 25;
+  int16_t contentStartY; // Where main content starts after status bar
 };
 
 struct RenderStatePersist {
@@ -32,19 +35,21 @@ public:
 
   ScreenLayout computeLayout() const;
 
-  void fullRender(const ScreenLayout& L,
-                  const char* mosqueName,
-                  const char* countdownStr,
-                  const char* prayerNames[5],
-                  const char* prayerTimes[5],
-                  int highlightIndex);
+  void fullRenderWithStatusBar(const ScreenLayout& L,
+                              const char* mosqueName,
+                              const char* countdownStr,
+                              const char* prayerNames[5],
+                              const char* prayerTimes[5],
+                              int highlightIndex,
+                              const StatusInfo& statusInfo);
 
-  void partialRender(const ScreenLayout& L,
-                     const char* mosqueName,
-                     const char* countdownStr,
-                     const char* prayerNames[5],
-                     const char* prayerTimes[5],
-                     int highlightIndex);
+  void partialRenderWithStatusBar(const ScreenLayout& L,
+                                 const char* mosqueName,
+                                 const char* countdownStr,
+                                 const char* prayerNames[5],
+                                 const char* prayerTimes[5],
+                                 int highlightIndex,
+                                 const StatusInfo& statusInfo);
 
   static int getNextPrayerIndex(const char* times[5], int currentHour, int currentMin);
 
@@ -62,4 +67,5 @@ private:
   void redrawCountdownRegion(const ScreenLayout& L, const char* countdownStr);
   void redrawPrayerRowRegion(const ScreenLayout& L, const char* names[5], const char* times[5], int highlightIndex);
   void redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName, const char* headerLabel);
+  void redrawStatusBarRegion(const StatusInfo& statusInfo);
 };

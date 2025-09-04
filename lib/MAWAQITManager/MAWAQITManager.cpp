@@ -97,11 +97,12 @@ void MAWAQITManager::asyncFetchMosqueInfo(const String &mosqueUUID,
   xTaskCreate(fetchInfoTask, "MawaqitInfoTask", 8192, params, 1, &fetchInfoTaskHandle);
 }
 
-// NEW FUNCTION: Fetch mosque info task
 void MAWAQITManager::fetchInfoTask(void *parameter) {
   InfoFetchParams *params = static_cast<InfoFetchParams *>(parameter);
   bool success = false;
-  
+  String mosqueName = "";
+
+  // Check Wi-Fi connection first
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("❌ Not connected to Wi-Fi. Aborting info fetch.");
     if (params->callback) {
@@ -111,62 +112,58 @@ void MAWAQITManager::fetchInfoTask(void *parameter) {
     vTaskDelete(nullptr);
     return;
   }
-  
-  String url = "https://mawaqit.net/api/3.0/mosque/" + params->mosqueUUID +
-               "/info?calendar";
+
+  // API endpoint
+  String url = "https://mawaqit.net/api/3.0/mosque/" + params->mosqueUUID + "/info?calendar";
   Serial.printf("🌐 Fetching mosque info from: %s\n", url.c_str());
-  
+
   WiFiClientSecure client;
-  client.setInsecure();
-  client.setTimeout(10000);
-  
+  client.setInsecure();               // Disable certificate check
+  //client.setBufferSizes(512, 512);    // Reduce RAM usage
+  client.setTimeout(10000);           // 10s timeout
+
   HTTPClient https;
   if (!https.begin(client, url)) {
     Serial.println("❌ HTTPS.begin() failed for mosque info");
   } else {
     https.addHeader("Api-Access-Token", MAWAQITManager::getInstance().apiKey);
-    https.setTimeout(10000); // 10 seconds timeout
-    
+    https.setTimeout(10000);
+
     int httpCode = https.GET();
     if (httpCode != HTTP_CODE_OK) {
       Serial.printf("❌ HTTP GET failed for mosque info: %d\n", httpCode);
     } else {
-      String json = https.getString();
-      Serial.printf("📦 Received mosque info: %d bytes\n", json.length());
-      
-      // Parse JSON to extract mosque name
-      DynamicJsonDocument doc(2048);
-      DeserializationError error = deserializeJson(doc, json);
-      if (error) {
-        Serial.printf("❌ JSON parsing failed: %s\n", error.c_str());
-      } else {
-        // Extract and print mosque name
-        if (doc.containsKey("name")) {
-          String mosqueName = doc["name"].as<String>();
+      String payload = https.getString();
+      Serial.printf("📦 Received mosque info: %d bytes\n", payload.length());
+
+      // Extract "name" value manually from JSON
+      int nameIndex = payload.indexOf("\"name\"");
+      if (nameIndex != -1) {
+        int colonIndex = payload.indexOf(":", nameIndex);
+        int quoteStart = payload.indexOf("\"", colonIndex + 1);
+        int quoteEnd   = payload.indexOf("\"", quoteStart + 1);
+
+        if (quoteStart != -1 && quoteEnd != -1) {
+          mosqueName = payload.substring(quoteStart + 1, quoteEnd);
           Serial.printf("🕌 Mosque Name: %s\n", mosqueName.c_str());
-        } else {
-          Serial.println("⚠️ Mosque name not found in response");
-        }
-        
-        // Optionally save the info to a file
-        File file = SPIFFS.open("/mosque_info.json", FILE_WRITE);
-        if (!file) {
-          Serial.println("❌ Failed to open mosque info file for writing");
-        } else {
-          file.print(json);
-          file.close();
-          Serial.println("✅ Mosque info saved to /mosque_info.json");
           success = true;
+        } else {
+          Serial.println("⚠️ Could not extract mosque name");
         }
+      } else {
+        Serial.println("⚠️ 'name' field not found in JSON");
       }
     }
+
     https.end();
+    client.stop();
   }
-  
+
+  // Return mosque name (instead of file path) via callback
   if (params->callback) {
-    params->callback(success, success ? "/mosque_info.json" : nullptr);
+    params->callback(success, success ? mosqueName.c_str() : nullptr);
   }
-  
+
   delete params;
   MAWAQITManager::getInstance().fetchInfoTaskHandle = nullptr;
   vTaskDelete(nullptr);

@@ -29,4 +29,14 @@ public:
   // geometry
   virtual int16_t width() const = 0;
   virtual int16_t height() const = 0;
+  // Add these to IEpaper.h virtual methods:
+  virtual void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) = 0;
+  virtual void fillCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) = 0;
+
+  // Convenience overloads for Arduino String
+  size_t print(const String& s) { return print(s.c_str()); }
+  void getTextBounds(const String& s, int16_t x, int16_t y,
+                     int16_t* x1, int16_t* y1, uint16_t* w, uint16_t* h) {
+    return getTextBounds(s.c_str(), x, y, x1, y1, w, h);
+  }
 };

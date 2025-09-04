@@ -14,24 +14,26 @@ ScreenUI::ScreenUI(IEpaper& epd, int16_t screenW, int16_t screenH)
 
 ScreenLayout ScreenUI::computeLayout() const {
   ScreenLayout L;
+  L.contentStartY = L.statusBarHeight + 10; // 10px margin after status bar
+
 
   // Optimized for 800x480 display
   L.boxW = W_ * 0.2;        // 40% of screen width (320px)
-  L.boxH = 70;              // Taller header box
-  L.spacing = 25;
+  L.boxH = 60;              // Taller header box
+  L.spacing = 20;
   L.boxX = (W_ - L.boxW) / 2;
-  L.headerY = 20;           // More top margin
+  L.headerY = L.contentStartY + 10;  // Start after status bar
 
   // Countdown section - centered on screen
   L.countdownW = W_ * 0.3;      // 50% of screen width (400px)
-  L.countdownH = 100;           // Taller for better font di splay
+  L.countdownH = 90;           // Taller for better font di splay
   // Center vertically. (X will be computed where used to avoid changing the header struct.)
-  L.countdownY = (H_ - L.countdownH) / 2;
+  L.countdownY = L.headerY + L.boxH + 40;
 
   // Prayer times row
-  L.rowY = L.countdownY + L.countdownH + 40;      // Spacing below the centered countdown
+  L.rowY = L.countdownY + L.countdownH + 30;      // Spacing below the centered countdown
   L.prayerBoxW = (W_ - 60) / 5;                   // Divide screen evenly with margins
-  L.prayerBoxH = H_ - L.rowY - 30;                // Use remaining height
+  L.prayerBoxH = H_ - L.rowY - 20;                // Use remaining height
   L.prayerSpacing = 10;
   const int count = 5;
   L.rowW = count * L.prayerBoxW + (count - 1) * L.prayerSpacing;
@@ -40,29 +42,31 @@ ScreenLayout ScreenUI::computeLayout() const {
   return L;
 }
 
-void ScreenUI::fullRender(const ScreenLayout& L,
-                          const char* mosqueName,
-                          const char* countdownStr,
-                          const char* prayerNames[5],
-                          const char* prayerTimes[5],
-                          int highlightIndex) {
+void ScreenUI::fullRenderWithStatusBar(const ScreenLayout& L,
+                                      const char* mosqueName,
+                                      const char* countdownStr,
+                                      const char* prayerNames[5],
+                                      const char* prayerTimes[5],
+                                      int highlightIndex,
+                                      const StatusInfo& statusInfo) {
   d_.setFullWindow();
   d_.firstPage();
   do {
-    d_.fillScreen(GxEPD_WHITE);
+    d_.fillScreen(0xFFFF); // White background
+
+    // Draw status bar first
+    StatusBar::drawStatusBar(d_, W_, H_, statusInfo, &Cairo_Bold7pt7b);
 
     // Header (mosque name)
-   drawTextWithoutBox(mosqueName ? mosqueName : "Mosque Name",
-                  L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
+    drawTextWithoutBox(mosqueName ? mosqueName : "Mosque Name",
+                      L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
 
-    // "Prayer in" label just above the centered countdown
+    // "Prayer in" label
     const int16_t countdownX = (W_ - L.countdownW) / 2;
-    const int16_t labelTopY   = L.countdownY - 70; // adjust spacing above countdown
+    const int16_t labelTopY = L.countdownY - 50;
 
-    // Pick the highlighted prayer name (fallback to "Prayer")
     const char* hlName = (highlightIndex >= 0 && highlightIndex < 5 && prayerNames[highlightIndex])
-    ? prayerNames[highlightIndex]
-     : "Prayer";
+        ? prayerNames[highlightIndex] : "Prayer";
     char labelBuf[32];
     snprintf(labelBuf, sizeof(labelBuf), "%s in", hlName);
 
@@ -78,23 +82,37 @@ void ScreenUI::fullRender(const ScreenLayout& L,
   } while (d_.nextPage());
 }
 
-void ScreenUI::partialRender(const ScreenLayout& L,
-const char* mosqueName,
-const char* countdownStr,
-const char* prayerNames[5],
-const char* prayerTimes[5],
-int highlightIndex) {
-// Build header label from the currently highlighted prayer
-const char* hlName = (highlightIndex >= 0 && highlightIndex < 5 && prayerNames[highlightIndex])
-? prayerNames[highlightIndex]
-: "Prayer";
-char labelBuf[32];
-snprintf(labelBuf, sizeof(labelBuf), "%s in", hlName);
+void ScreenUI::partialRenderWithStatusBar(const ScreenLayout& L,
+                                         const char* mosqueName,
+                                         const char* countdownStr,
+                                         const char* prayerNames[5],
+                                         const char* prayerTimes[5],
+                                         int highlightIndex,
+                                         const StatusInfo& statusInfo) {
+  // Update status bar
+  redrawStatusBarRegion(statusInfo);
+
+  // Build header label from the currently highlighted prayer
+  const char* hlName = (highlightIndex >= 0 && highlightIndex < 5 && prayerNames[highlightIndex])
+      ? prayerNames[highlightIndex] : "Prayer";
+  char labelBuf[32];
+  snprintf(labelBuf, sizeof(labelBuf), "%s in", hlName);
+
+  redrawHeaderRegion(L, mosqueName, labelBuf);
+  redrawCountdownRegion(L, countdownStr);
+  redrawPrayerRowRegion(L, prayerNames, prayerTimes, highlightIndex);
+}
 
 
-redrawHeaderRegion(L, mosqueName, labelBuf);
-redrawCountdownRegion(L, countdownStr);
-redrawPrayerRowRegion(L, prayerNames, prayerTimes, highlightIndex);
+
+void ScreenUI::redrawStatusBarRegion(const StatusInfo& statusInfo) {
+  const int statusBarHeight = ScreenLayout::statusBarHeight;
+  d_.setPartialWindow(0, 0, W_, statusBarHeight);
+  d_.firstPage();
+  do {
+    d_.fillRect(0, 0, W_, statusBarHeight, 0xFFFF); // White background
+    StatusBar::drawStatusBar(d_, W_, H_, statusInfo, &Cairo_Bold7pt7b);
+  } while (d_.nextPage());
 }
 
 int ScreenUI::getNextPrayerIndex(const char* times[5], int currentHour, int currentMin) {
@@ -242,11 +260,11 @@ L.boxX, L.headerY, L.boxW, L.boxH, &Cairo_Bold9pt7b);
 
 // Centered label above the countdown (e.g., "Asr in")
 const char* label = (headerLabel && headerLabel[0]) ? headerLabel : "Prayer in";
-d_.setFont(&Cairo_Bold9pt7b);
+d_.setFont(&Cairo_Bold24pt7b);            // measure with the SAME font we draw with
 int16_t x1, y1; uint16_t w, h;
 d_.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
 const int16_t centerX = W_/2;
-const int16_t topY = L.countdownY - 70; // keep consistent with fullRender
+const int16_t topY = L.countdownY - 50; // keep consistent with fullRender
 const int16_t textX = centerX - w/2 - x1;
 const int16_t textY = topY - y1;
 

@@ -18,6 +18,7 @@
 #include <SPI.h>
 #include "ScreenUI.h"
 #include "GxEPD2Adapter.h"
+#include "StatusBar.h"
 
 
 // Pins for E-paper
@@ -53,6 +54,8 @@ bool isFetching = false;
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
 String mosqueName = "Mosque Name"; // Default fallback name
+// Add this global variable to track BLE advertising state
+bool g_bleAdvertising = false;
 
 //--------------------------------------------------------------------------
 bool shouldFetchBasedOnInterval(unsigned long lastUpdateSeconds,
@@ -225,7 +228,7 @@ void executeMainTask() {
   Serial.printf("  ⏳%s in %02d:%02d\n", nextPrayerInfo.name.c_str(), countdown.hours, countdown.minutes);
   Serial.println("✨══════•••••••••••••••••••••••••••••••••••══════✨");
 
-  // ---------- E-paper display ----------
+  // ---------- E-paper display with status bar ----------
   const char* PRAYER_NAMES_ROW[5] = {"Fajr","Dhuhr","Asr","Maghrib","Isha"};
   const char* prayerTimesRow[5]   = {
     FAJR.c_str(), DHUHR.c_str(), ASR.c_str(), MAGHRIB.c_str(), ISHA.c_str()
@@ -236,13 +239,18 @@ void executeMainTask() {
 
   int highlightIndex = ScreenUI::getNextPrayerIndex(prayerTimesRow, timeinfo.tm_hour, timeinfo.tm_min);
   
-  // Use the fetched mosque name instead of hardcoded value
+  // Get status information
+  StatusInfo statusInfo = StatusBar::getStatusInfo(g_bleAdvertising);
+  
+  // Use the fetched mosque name
   const char* MOSQUE_NAME = mosqueName.c_str();
 
   if (!g_renderState.initialized) {
-    ui.fullRender(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, prayerTimesRow, highlightIndex);
+    ui.fullRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, 
+                              prayerTimesRow, highlightIndex, statusInfo);
   } else {
-    ui.partialRender(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, prayerTimesRow, highlightIndex);
+    ui.partialRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, 
+                                 prayerTimesRow, highlightIndex, statusInfo);
   }
 
   // persist (optional)
@@ -348,6 +356,7 @@ void handleConnectingWifiWithSavedCredentials() {
   wifi.onWifiConnectedCallback([]() {
     Serial.println("✅ Wi-Fi connected");
     BLEManager::getInstance().stopAdvertising();
+    g_bleAdvertising = false; // Clear BLE advertising flag
     state = SYNCING_TIME;
   });
   wifi.onWifiFailedToConnectCallback([]() {
@@ -373,6 +382,7 @@ void handleAdvertisingBLE() {
   Serial.println("🔔 Advertising BLE...");
   BLEManager &ble = BLEManager::getInstance();
   ble.setupBLE();
+  g_bleAdvertising = true; // Set BLE advertising flag
   ble.onNotificationEnabled([]() {
     Serial.println("🔔 BLE notification enabled");
     state = WAITING_FOR_WIFI_SCAN;
@@ -432,12 +442,14 @@ void handleUseWifiInput() {
   Serial.println("🔄 Waiting for user Wi-Fi input...");
   BLEManager &ble = BLEManager::getInstance();
 }
+
 void handleConnectingWifi() {
   Serial.println("🔄 Connecting to Wi-Fi...");
   WiFiManager &wifi = WiFiManager::getInstance();
   wifi.onWifiConnectedCallback([]() {
     Serial.println("✅ Wi-Fi connected");
     BLEManager::getInstance().stopAdvertising();
+    g_bleAdvertising = false; // Clear BLE advertising flag
     state = SYNCING_TIME;
   });
   wifi.onWifiFailedToConnectCallback([]() {
