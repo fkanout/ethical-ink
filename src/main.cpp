@@ -233,6 +233,13 @@ void executeMainTask() {
   const char* prayerTimesRow[5]   = {
     FAJR.c_str(), DHUHR.c_str(), ASR.c_str(), MAGHRIB.c_str(), ISHA.c_str()
   };
+
+   // NEW: Create iqama times array (Note: No Sunrise iqama, so we skip index 1)
+  const char* iqamaTimesRow[5] = {
+    IQAMA_Fajr.c_str(), IQAMA_Dhuhr.c_str(), IQAMA_Asr.c_str(), 
+    IQAMA_Maghrib.c_str(), IQAMA_Isha.c_str()
+  };
+
   GxEPD2Adapter<decltype(display)> epdAdapter(display);
   ScreenUI ui(epdAdapter, /*screenW*/800, /*screenH*/480);
   ScreenLayout L = ui.computeLayout();
@@ -245,12 +252,14 @@ void executeMainTask() {
   // Use the fetched mosque name
   const char* MOSQUE_NAME = mosqueName.c_str();
 
-  if (!g_renderState.initialized) {
+   if (!g_renderState.initialized) {
+    // UPDATED: Pass iqama times to fullRender
     ui.fullRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, 
-                              prayerTimesRow, highlightIndex, statusInfo);
+                              prayerTimesRow, iqamaTimesRow, highlightIndex, statusInfo);
   } else {
+    // UPDATED: Pass iqama times to partialRender
     ui.partialRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, 
-                                 prayerTimesRow, highlightIndex, statusInfo);
+                                 prayerTimesRow, iqamaTimesRow, highlightIndex, statusInfo);
   }
 
   // persist (optional)

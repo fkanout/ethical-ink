@@ -14,6 +14,7 @@
 #include "fonts/Cairo_Bold45pt7b.h"
 #include "fonts/Cairo_Bold50pt7b.h"
 #include "fonts/Cairo_Bold60pt7b.h"
+#include "fonts/Cairo_Bold70pt7b.h"
 
 #include "StatusBar.h"
 
@@ -45,6 +46,7 @@ public:
                               const char* countdownStr,
                               const char* prayerNames[5],
                               const char* prayerTimes[5],
+                              const char* iqamaTimes[5],
                               int highlightIndex,
                               const StatusInfo& statusInfo);
 
@@ -53,6 +55,7 @@ public:
                                  const char* countdownStr,
                                  const char* prayerNames[5],
                                  const char* prayerTimes[5],
+                                 const char* iqamaTimes[5],
                                  int highlightIndex,
                                  const StatusInfo& statusInfo);
 
@@ -65,12 +68,16 @@ private:
   void drawTextBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font);
   void drawCenteredText(const char* text, int16_t centerX, int16_t topY, const GFXfont* font);
   void drawTextWithoutBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font);
-  void drawPrayerTimeBoxes(const char* names[], const char* times[], int count,
-                           int16_t startY, int16_t boxW, int16_t boxH, int16_t spacing,
-                           int highlightIndex);
+  void drawPrayerTimeBoxes(const char* names[], const char* times[], 
+                          const char* iqamaTimes[],  // NEW PARAMETER
+                          int count, int16_t startY, int16_t boxW, int16_t boxH, 
+                          int16_t spacing, int highlightIndex);
 
   void redrawCountdownRegion(const ScreenLayout& L, const char* countdownStr);
-  void redrawPrayerRowRegion(const ScreenLayout& L, const char* names[5], const char* times[5], int highlightIndex);
+  void redrawPrayerRowRegion(const ScreenLayout& L,
+                            const char* names[5], const char* times[5],
+                            const char* iqamaTimes[5],  // NEW PARAMETER
+                            int highlightIndex);
   void redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName, const char* headerLabel);
   void redrawStatusBarRegion(const StatusInfo& statusInfo);
 };
