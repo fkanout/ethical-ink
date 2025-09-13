@@ -355,6 +355,7 @@ void handleCheckingTime() {
   } else {
     Serial.println("❌ Time not synced");
     state = CONNECTING_WIFI_WITH_SAVED_CREDENTIALS;
+    //state = ADVERTISING_BLE;  // Instead of CONNECTING_WIFI_WITH_SAVED_CREDENTIALS when it hangs on time is not sync
   }
 }
 
