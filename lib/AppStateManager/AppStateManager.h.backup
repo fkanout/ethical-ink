@@ -37,8 +37,6 @@ struct RTCData {
 
   int day = 0;
   int month = 0;
-
-  char mosqueUUID[40] = ""; // Store mosque UUID (36 chars + null terminator + padding)
 };
 
 extern RTCData rtcData;

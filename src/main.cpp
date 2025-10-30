@@ -273,6 +273,17 @@ void executeMainTask() {
 //-------------------------end main execute-------------------------------------
 void fetchPrayerTimesIfDue() {
   Serial.println("📡 Fetching prayer times and mosque info from MAWAQIT...");
+  
+  // Check if mosque UUID is set
+  if (strlen(rtcData.mosqueUUID) == 0) {
+    Serial.println("⚠️ No mosque UUID configured. Please configure via BLE first.");
+    state = SLEEPING;
+    return;
+  }
+  
+  Serial.printf("🕌 Using mosque UUID: %s", rtcData.mosqueUUID);
+
+
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
 
   WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
@@ -286,7 +297,7 @@ void fetchPrayerTimesIfDue() {
     
     // First fetch mosque info to get the name
     MAWAQITManager::getInstance().asyncFetchMosqueInfo(
-        "f9a51508-05b7-4324-a7e8-4acbc2893c02",
+        rtcData.mosqueUUID,  // Use stored mosque UUID instead of hardcoded
         [](bool success, const char *path) {
           if (success) {
             Serial.printf("📂 Mosque info file ready at: %s\n", path);
@@ -310,7 +321,7 @@ void fetchPrayerTimesIfDue() {
           
           // Now fetch prayer times
           MAWAQITManager::getInstance().asyncFetchPrayerTimes(
-              "f9a51508-05b7-4324-a7e8-4acbc2893c02",
+              rtcData.mosqueUUID,  // Use stored mosque UUID instead of hardcoded
               [](bool success, const char *path) {
                 if (success) {
                   Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
@@ -437,11 +448,23 @@ void handleWaitingForWifiScan() {
       }
       String ssid = doc["ssid"].as<String>();
       String password = doc["password"].as<String>();
+      String mosqueId = doc["mosque_id"].as<String>(); // Extract mosque ID from JSON
       if (ssid.isEmpty() || password.isEmpty()) {
         Serial.println("⚠️ Incomplete Wi-Fi credentials.");
         state = ADVERTISING_BLE;
         return;
       }
+      
+      // Save mosque UUID if provided
+      if (!mosqueId.isEmpty()) {
+        strncpy(rtcData.mosqueUUID, mosqueId.c_str(), sizeof(rtcData.mosqueUUID) - 1);
+        rtcData.mosqueUUID[sizeof(rtcData.mosqueUUID) - 1] = '\0'; // Ensure null termination
+        AppStateManager::save();
+        Serial.printf("💾 Saved mosque UUID: %s\n", rtcData.mosqueUUID);
+      } else {
+        Serial.println("⚠️ No mosque ID provided, using existing or default.");
+      }
+      
       wifi.asyncConnect(ssid.c_str(), password.c_str());
       state = CONNECTING_WIFI;
     });

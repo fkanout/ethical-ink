@@ -53,6 +53,7 @@ void AppStateManager::load() {
     rtcData.userEventsUpdateMillis = 0;
     rtcData.day = 0;
     rtcData.month = 0;
+    strncpy(rtcData.mosqueUUID, "", sizeof(rtcData.mosqueUUID)); // Initialize mosque UUID as empty
     rtcData.rtcMagic = RTC_MAGIC_VALID;
   } else {
     Serial.println("✅ RTC memory valid, loaded");
