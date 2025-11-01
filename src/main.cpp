@@ -56,6 +56,10 @@ AppState lastState = FETAL_ERROR;
 String mosqueName = "Mosque Name"; // Default fallback name
 // Add this global variable to track BLE advertising state
 bool g_bleAdvertising = false;
+// Global variables to store BLE-received credentials
+String g_receivedSSID = "";
+String g_receivedPassword = "";
+String g_receivedMosqueUUID = "";
 
 //--------------------------------------------------------------------------
 bool shouldFetchBasedOnInterval(unsigned long lastUpdateSeconds,
@@ -271,6 +275,34 @@ void executeMainTask() {
 }
 
 //-------------------------end main execute-------------------------------------
+
+// Helper function to get mosque UUID from config file
+String getMosqueUUID() {
+  const char* DEFAULT_UUID = "f9a51508-05b7-4324-a7e8-4acbc2893c02";
+
+  String configJson = readJsonFile("/mosque_config.json");
+  if (configJson.isEmpty() || configJson == "{}") {
+    Serial.println("⚠️ No mosque config found, using default UUID");
+    return String(DEFAULT_UUID);
+  }
+
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, configJson);
+  if (error) {
+    Serial.println("❌ Failed to parse mosque config, using default UUID");
+    return String(DEFAULT_UUID);
+  }
+
+  String uuid = doc["mosque_uuid"].as<String>();
+  if (uuid.isEmpty()) {
+    Serial.println("⚠️ Empty UUID in config, using default");
+    return String(DEFAULT_UUID);
+  }
+
+  Serial.printf("✅ Using mosque UUID: %s\n", uuid.c_str());
+  return uuid;
+}
+
 void fetchPrayerTimesIfDue() {
   Serial.println("📡 Fetching prayer times and mosque info from MAWAQIT...");
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
@@ -283,20 +315,23 @@ void fetchPrayerTimesIfDue() {
   WiFiManager::getInstance().onWifiConnectedCallback([]() {
     Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
     MAWAQITManager::getInstance().setApiKey("86ed48fd-691e-4370-a9bf-ae74f788ed54");
-    
+
+    // Get mosque UUID from config file
+    String mosqueUUID = getMosqueUUID();
+
     // First fetch mosque info to get the name
     MAWAQITManager::getInstance().asyncFetchMosqueInfo(
-        "f9a51508-05b7-4324-a7e8-4acbc2893c02",
-        [](bool success, const char *path) {
+        mosqueUUID,
+        [mosqueUUID](bool success, const char *path) {
           if (success) {
             Serial.printf("📂 Mosque info file ready at: %s\n", path);
-            
+
             // Read and parse the mosque info to extract the name
             File file = SPIFFS.open("/mosque_info.json", FILE_READ);
             if (file) {
               String json = file.readString();
               file.close();
-              
+
               DynamicJsonDocument doc(2048);
               DeserializationError error = deserializeJson(doc, json);
               if (!error && doc.containsKey("name")) {
@@ -307,10 +342,10 @@ void fetchPrayerTimesIfDue() {
           } else {
             Serial.println("⚠️ Failed to fetch mosque info. Using default name.");
           }
-          
-          // Now fetch prayer times
+
+          // Now fetch prayer times using the same UUID
           MAWAQITManager::getInstance().asyncFetchPrayerTimes(
-              "f9a51508-05b7-4324-a7e8-4acbc2893c02",
+              mosqueUUID,
               [](bool success, const char *path) {
                 if (success) {
                   Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
@@ -354,8 +389,8 @@ void handleCheckingTime() {
     state = RUNNING_MAIN_TASK;
   } else {
     Serial.println("❌ Time not synced");
-    state = CONNECTING_WIFI_WITH_SAVED_CREDENTIALS;
-    //state = ADVERTISING_BLE;  // Instead of CONNECTING_WIFI_WITH_SAVED_CREDENTIALS when it hangs on time is not sync
+    //state = CONNECTING_WIFI_WITH_SAVED_CREDENTIALS;
+    state = ADVERTISING_BLE;  // Use BLE for WiFi setup (comment this to use saved credentials)
   }
 }
 
@@ -427,22 +462,34 @@ void handleWaitingForWifiScan() {
     BLEManager::getInstance().sendBLEData(json);
     BLEManager::getInstance().onJsonReceived([](const String &json) {
       Serial.println("📩 Received JSON over BLE: " + json);
-      WiFiManager &wifi = WiFiManager::getInstance();
-      StaticJsonDocument<256> doc;
+      StaticJsonDocument<512> doc;
       DeserializationError err = deserializeJson(doc, json);
       if (err) {
         Serial.println("❌ Invalid JSON format");
         state = ADVERTISING_BLE;
         return;
       }
+
       String ssid = doc["ssid"].as<String>();
       String password = doc["password"].as<String>();
+      String mosqueUuid = doc["mosque_uuid"].as<String>();
+
       if (ssid.isEmpty() || password.isEmpty()) {
         Serial.println("⚠️ Incomplete Wi-Fi credentials.");
         state = ADVERTISING_BLE;
         return;
       }
-      wifi.asyncConnect(ssid.c_str(), password.c_str());
+
+      // Store credentials in global variables (defer SPIFFS write to avoid stack overflow)
+      g_receivedSSID = ssid;
+      g_receivedPassword = password;
+      g_receivedMosqueUUID = mosqueUuid;
+
+      Serial.printf("✅ Received WiFi: %s, Mosque UUID: %s\n",
+                    ssid.c_str(),
+                    mosqueUuid.isEmpty() ? "not provided" : mosqueUuid.c_str());
+
+      // Transition to connecting state
       state = CONNECTING_WIFI;
     });
   });
@@ -456,12 +503,25 @@ void handleUseWifiInput() {
 void handleConnectingWifi() {
   Serial.println("🔄 Connecting to Wi-Fi...");
   WiFiManager &wifi = WiFiManager::getInstance();
+
+  // Use the globally stored credentials
+  wifi.asyncConnect(g_receivedSSID.c_str(), g_receivedPassword.c_str());
+
   wifi.onWifiConnectedCallback([]() {
     Serial.println("✅ Wi-Fi connected");
+
+    // Now it's safe to write to SPIFFS (we're in the main loop context after connection)
+    if (!g_receivedMosqueUUID.isEmpty()) {
+      String mosqueConfigJson = "{\"mosque_uuid\":\"" + g_receivedMosqueUUID + "\"}";
+      writeJsonFile("/mosque_config.json", mosqueConfigJson);
+      Serial.printf("🕌 Mosque UUID saved: %s\n", g_receivedMosqueUUID.c_str());
+    }
+
     BLEManager::getInstance().stopAdvertising();
     g_bleAdvertising = false; // Clear BLE advertising flag
     state = SYNCING_TIME;
   });
+
   wifi.onWifiFailedToConnectCallback([]() {
     Serial.println("❌ Failed to connect to Wi-Fi");
     state = ADVERTISING_BLE;
