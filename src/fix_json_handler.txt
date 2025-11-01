@@ -1,0 +1,32 @@
+    BLEManager::getInstance().onJsonReceived([](const String &json) {
+      Serial.println("📩 Received JSON over BLE: " + json);
+      WiFiManager &wifi = WiFiManager::getInstance();
+      StaticJsonDocument<256> doc;
+      DeserializationError err = deserializeJson(doc, json);
+      if (err) {
+        Serial.println("❌ Invalid JSON format");
+        state = ADVERTISING_BLE;
+        return;
+      }
+      String ssid = doc["ssid"].as<String>();
+      String password = doc["password"].as<String>();
+      String mosqueId = doc["mosque_id"].as<String>(); // Extract mosque ID from JSON
+      if (ssid.isEmpty() || password.isEmpty()) {
+        Serial.println("⚠️ Incomplete Wi-Fi credentials.");
+        state = ADVERTISING_BLE;
+        return;
+      }
+      
+      // Save mosque UUID if provided
+      if (!mosqueId.isEmpty()) {
+        strncpy(rtcData.mosqueUUID, mosqueId.c_str(), sizeof(rtcData.mosqueUUID) - 1);
+        rtcData.mosqueUUID[sizeof(rtcData.mosqueUUID) - 1] = '\0'; // Ensure null termination
+        AppStateManager::save();
+        Serial.printf("💾 Saved mosque UUID: %s\n", rtcData.mosqueUUID);
+      } else {
+        Serial.println("⚠️ No mosque ID provided, using existing or default.");
+      }
+      
+      wifi.asyncConnect(ssid.c_str(), password.c_str());
+      state = CONNECTING_WIFI;
+    });

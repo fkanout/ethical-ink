@@ -49,56 +49,29 @@ void MAWAQITManager::fetchTask(void *parameter) {
   if (!https.begin(client, url)) {
     Serial.println("❌ HTTPS.begin() failed");
   } else {
-       https.addHeader("Api-Access-Token", MAWAQITManager::getInstance().apiKey);
-    https.setTimeout(20000); // 20 seconds for large files
+    https.addHeader("Api-Access-Token", MAWAQITManager::getInstance().apiKey);
+    https.setTimeout(10000); // 10 seconds timeout
     int httpCode = https.GET();
     if (httpCode != HTTP_CODE_OK) {
       Serial.printf("❌ HTTP GET failed: %d\n", httpCode);
     } else {
-      // Stream to file instead of loading to RAM
-      File file = SPIFFS.open(MOSQUE_FILE, FILE_WRITE);
-      if (!file) {
-        Serial.println("❌ Failed to open file for writing");
+      String json = https.getString();
+      Serial.printf("📦 Received %d bytes\n", json.length());
+      // Validate the JSON (lightweight structure check)
+      StaticJsonDocument<512> doc;
+      DeserializationError error = deserializeJson(doc, json);
+      if (error) {
+        Serial.printf("❌ JSON validation failed: %s\n", error.c_str());
       } else {
-        WiFiClient *stream = https.getStreamPtr();
-        uint8_t buffer[1024];
-        int totalRead = 0;
-        int contentLength = https.getSize();
-        Serial.printf("📦 Downloading %d bytes...\n", contentLength);
-
-        unsigned long lastDataTime = millis();
-        unsigned long startTime = millis();
-
-        while (https.connected() && (contentLength > 0 || contentLength == -1)) {
-          size_t available = stream->available();
-          if (available) {
-            int c = stream->readBytes(buffer, min(available, sizeof(buffer)));
-            if (c > 0) {
-              file.write(buffer, c);
-              totalRead += c;
-              if (contentLength > 0) contentLength -= c;
-              lastDataTime = millis();
-
-              if (totalRead % 10240 == 0) {
-                Serial.printf("📥 %d KB\n", totalRead / 1024);
-              }
-            }
-          }
-
-          if (millis() - lastDataTime > 10000) {
-            Serial.println("⚠️ No data for 10s, stopping download");
-            break;
-          }
-          if (millis() - startTime > 60000) {
-            Serial.println("⚠️ Total timeout (60s), stopping download");
-            break;
-          }
-
-          vTaskDelay(1);
+        File file = SPIFFS.open(MOSQUE_FILE, FILE_WRITE);
+        if (!file) {
+          Serial.println("❌ Failed to open file for writing");
+        } else {
+          file.print(json);
+          file.close();
+          Serial.printf("✅ JSON saved to %s\n", MOSQUE_FILE);
+          success = true;
         }
-        file.close();
-        Serial.printf("✅ Saved %d bytes\n", totalRead);
-        success = (totalRead > 1000);
       }
     }
     https.end();
@@ -162,14 +135,6 @@ void MAWAQITManager::fetchInfoTask(void *parameter) {
     } else {
       String payload = https.getString();
       Serial.printf("📦 Received mosque info: %d bytes\n", payload.length());
-
-      // Save to SPIFFS
-      File file = SPIFFS.open("/mosque_info.json", FILE_WRITE);
-      if (file) {
-        file.print(payload);
-        file.close();
-        Serial.println("✅ Mosque info saved to /mosque_info.json");
-      }
 
       // Extract "name" value manually from JSON
       int nameIndex = payload.indexOf("\"name\"");

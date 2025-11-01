@@ -71,13 +71,26 @@ bool splitCalendarJson(const String &rawJsonPath, const bool &isIqama) {
   File file = SPIFFS.open(rawJsonPath, "r");
   if (!file) {
     Serial.println("❌ Failed to open file!");
-    return "{}";
+    return false;
   }
-  DynamicJsonDocument doc(80000); // 80KB
+
+  size_t fileSize = file.size();
+  Serial.printf("📦 File size: %d bytes\n", fileSize);
+
+  // Calculate required capacity: file size + ~30% overhead for ArduinoJson
+  size_t capacity = fileSize + (fileSize / 3);
+  Serial.printf("📊 JSON capacity: %d bytes\n", capacity);
+
+  DynamicJsonDocument doc(capacity);
   DeserializationError error = deserializeJson(doc, file);
+  file.close();
+
+  Serial.printf("📈 Memory used: %d bytes\n", doc.memoryUsage());
+
   if (error) {
     Serial.print("❌ JSON parsing failed: ");
     Serial.println(error.f_str());
+    Serial.printf("⚠️ Error code: %d\n", error.code());
     return false;
   }
   String mainKey = isIqama ? "iqamaCalendar" : "calendar";

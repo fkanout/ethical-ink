@@ -305,6 +305,17 @@ String getMosqueUUID() {
 
 void fetchPrayerTimesIfDue() {
   Serial.println("📡 Fetching prayer times and mosque info from MAWAQIT...");
+  
+  // Check if mosque UUID is set
+  if (strlen(rtcData.mosqueUUID) == 0) {
+    Serial.println("⚠️ No mosque UUID configured. Please configure via BLE first.");
+    state = SLEEPING;
+    return;
+  }
+  
+  Serial.printf("🕌 Using mosque UUID: %s", rtcData.mosqueUUID);
+
+
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
 
   WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
@@ -480,7 +491,7 @@ void handleWaitingForWifiScan() {
         return;
       }
 
-      // Store credentials in global variables (defer SPIFFS write to avoid stack overflow)
+      // Store credentials in global variables (defer write operations to avoid stack overflow)
       g_receivedSSID = ssid;
       g_receivedPassword = password;
       g_receivedMosqueUUID = mosqueUuid;
@@ -510,11 +521,18 @@ void handleConnectingWifi() {
   wifi.onWifiConnectedCallback([]() {
     Serial.println("✅ Wi-Fi connected");
 
-    // Now it's safe to write to SPIFFS (we're in the main loop context after connection)
+    // Now it's safe to write to SPIFFS and RTC (we're in the main loop context after connection)
     if (!g_receivedMosqueUUID.isEmpty()) {
+      // Save to RTC memory (primary storage)
+      strncpy(rtcData.mosqueUUID, g_receivedMosqueUUID.c_str(), sizeof(rtcData.mosqueUUID) - 1);
+      rtcData.mosqueUUID[sizeof(rtcData.mosqueUUID) - 1] = '\0'; // Ensure null termination
+      AppStateManager::save();
+      Serial.printf("💾 Mosque UUID saved to RTC: %s\n", rtcData.mosqueUUID);
+
+      // Also save to SPIFFS for backup
       String mosqueConfigJson = "{\"mosque_uuid\":\"" + g_receivedMosqueUUID + "\"}";
       writeJsonFile("/mosque_config.json", mosqueConfigJson);
-      Serial.printf("🕌 Mosque UUID saved: %s\n", g_receivedMosqueUUID.c_str());
+      Serial.printf("💾 Mosque UUID saved to SPIFFS: %s\n", g_receivedMosqueUUID.c_str());
     }
 
     BLEManager::getInstance().stopAdvertising();
