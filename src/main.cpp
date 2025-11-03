@@ -1,5 +1,3 @@
-
-
 #include "AppStateManager.h"
 #include "EventsManager.h"
 #include "SPIFFSHelper.h"
@@ -20,7 +18,6 @@
 #include "GxEPD2Adapter.h"
 #include "StatusBar.h"
 
-
 // Pins for E-paper
 #define EPD_CS   10
 #define EPD_DC   9
@@ -39,7 +36,7 @@ struct RenderState {
   char times[5][6]; // Fajr..Isha بصيغة "HH:MM"
 };
 // RTC slow memory state (optional)
-RTC_DATA_ATTR RenderStatePersist g_renderState;
+RTC_DATA_ATTR RenderState g_renderState;
 
 
 CalendarManager calendarManager;
