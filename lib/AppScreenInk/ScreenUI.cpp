@@ -355,3 +355,27 @@ void ScreenUI::redrawHeaderRegion(const ScreenLayout &L, const char *mosqueName,
     drawCenteredText(label, centerX, topY, &Cairo_Bold24pt7b);
   } while (d_.nextPage());
 }
+
+void ScreenUI::showInitializationScreen() {
+  d_.setFullWindow();
+  d_.firstPage();
+  do {
+    d_.fillScreen(GxEPD_BLACK);
+    d_.setTextColor(GxEPD_WHITE);
+
+    // Center the text on screen
+    int16_t centerX = W_ / 2; // Center X for 800px wide screen
+    int16_t centerY = H_ / 2; // Center Y for 480px high screen
+
+    // First line: "MAWAQIT Frame" - Large font
+    d_.setFont(&Cairo_Bold40pt7b);
+    d_.setCursor(centerX - 280, centerY);
+    d_.print("MAWAQIT Frame");
+
+    // Third line: Setup instructions - Smaller font
+    d_.setFont(&Cairo_Bold12pt7b);
+    d_.setCursor(centerX - 330, centerY + 80);
+    d_.print("Enable Bluetooth on your phone and open MAWAQIT app to start");
+
+  } while (d_.nextPage());
+}

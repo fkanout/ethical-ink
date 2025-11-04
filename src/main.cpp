@@ -483,6 +483,12 @@ void handleSyncingTime() {
 
 void handleAdvertisingBLE() {
   Serial.println("🔔 Advertising BLE...");
+
+  // Display initialization message on e-ink screen
+  GxEPD2Adapter<decltype(display)> epdAdapter(display);
+  ScreenUI ui(epdAdapter, /*screenW*/ 800, /*screenH*/ 480);
+  ui.showInitializationScreen();
+
   BLEManager &ble = BLEManager::getInstance();
   ble.setupBLE();
   g_bleAdvertising = true; // Set BLE advertising flag

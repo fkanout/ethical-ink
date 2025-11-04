@@ -1,12 +1,10 @@
 // ScreenUI.h
 #pragma once
+#include "IEpaper.h"
 #include <Arduino.h>
 #include <gfxfont.h>
-#include "IEpaper.h"
 
 // Cairo Google Fonts - converted to Adafruit GFX format
-#include "fonts/Cairo_Bold7pt7b.h"
-#include "fonts/Cairo_Bold9pt7b.h"
 #include "fonts/Cairo_Bold12pt7b.h"
 #include "fonts/Cairo_Bold18pt7b.h"
 #include "fonts/Cairo_Bold24pt7b.h"
@@ -15,6 +13,8 @@
 #include "fonts/Cairo_Bold50pt7b.h"
 #include "fonts/Cairo_Bold60pt7b.h"
 #include "fonts/Cairo_Bold70pt7b.h"
+#include "fonts/Cairo_Bold7pt7b.h"
+#include "fonts/Cairo_Bold9pt7b.h"
 
 #include "StatusBar.h"
 
@@ -37,47 +37,50 @@ struct RenderStatePersist {
 class ScreenUI {
 public:
   // pass screen size (800x480) so we don't depend on a specific panel
-  ScreenUI(IEpaper& epd, int16_t screenW, int16_t screenH);
+  ScreenUI(IEpaper &epd, int16_t screenW, int16_t screenH);
 
   ScreenLayout computeLayout() const;
 
-  void fullRenderWithStatusBar(const ScreenLayout& L,
-                              const char* mosqueName,
-                              const char* countdownStr,
-                              const char* prayerNames[5],
-                              const char* prayerTimes[5],
-                              const char* iqamaTimes[5],
-                              int highlightIndex,
-                              const StatusInfo& statusInfo);
+  void fullRenderWithStatusBar(const ScreenLayout &L, const char *mosqueName,
+                               const char *countdownStr,
+                               const char *prayerNames[5],
+                               const char *prayerTimes[5],
+                               const char *iqamaTimes[5], int highlightIndex,
+                               const StatusInfo &statusInfo);
 
-  void partialRenderWithStatusBar(const ScreenLayout& L,
-                                 const char* mosqueName,
-                                 const char* countdownStr,
-                                 const char* prayerNames[5],
-                                 const char* prayerTimes[5],
-                                 const char* iqamaTimes[5],
-                                 int highlightIndex,
-                                 const StatusInfo& statusInfo);
+  void partialRenderWithStatusBar(const ScreenLayout &L, const char *mosqueName,
+                                  const char *countdownStr,
+                                  const char *prayerNames[5],
+                                  const char *prayerTimes[5],
+                                  const char *iqamaTimes[5], int highlightIndex,
+                                  const StatusInfo &statusInfo);
 
-  static int getNextPrayerIndex(const char* times[5], int currentHour, int currentMin);
+  void showInitializationScreen();
+
+  static int getNextPrayerIndex(const char *times[5], int currentHour,
+                                int currentMin);
 
 private:
-  IEpaper& d_;
+  IEpaper &d_;
   int16_t W_, H_;
 
-  void drawTextBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font);
-  void drawCenteredText(const char* text, int16_t centerX, int16_t topY, const GFXfont* font);
-  void drawTextWithoutBox(const char* text, int16_t x, int16_t y, int16_t wBox, int16_t hBox, const GFXfont* font);
-  void drawPrayerTimeBoxes(const char* names[], const char* times[], 
-                          const char* iqamaTimes[],  // NEW PARAMETER
-                          int count, int16_t startY, int16_t boxW, int16_t boxH, 
-                          int16_t spacing, int highlightIndex);
+  void drawTextBox(const char *text, int16_t x, int16_t y, int16_t wBox,
+                   int16_t hBox, const GFXfont *font);
+  void drawCenteredText(const char *text, int16_t centerX, int16_t topY,
+                        const GFXfont *font);
+  void drawTextWithoutBox(const char *text, int16_t x, int16_t y, int16_t wBox,
+                          int16_t hBox, const GFXfont *font);
+  void drawPrayerTimeBoxes(const char *names[], const char *times[],
+                           const char *iqamaTimes[], // NEW PARAMETER
+                           int count, int16_t startY, int16_t boxW,
+                           int16_t boxH, int16_t spacing, int highlightIndex);
 
-  void redrawCountdownRegion(const ScreenLayout& L, const char* countdownStr);
-  void redrawPrayerRowRegion(const ScreenLayout& L,
-                            const char* names[5], const char* times[5],
-                            const char* iqamaTimes[5],  // NEW PARAMETER
-                            int highlightIndex);
-  void redrawHeaderRegion(const ScreenLayout& L, const char* mosqueName, const char* headerLabel);
-  void redrawStatusBarRegion(const StatusInfo& statusInfo);
+  void redrawCountdownRegion(const ScreenLayout &L, const char *countdownStr);
+  void redrawPrayerRowRegion(const ScreenLayout &L, const char *names[5],
+                             const char *times[5],
+                             const char *iqamaTimes[5], // NEW PARAMETER
+                             int highlightIndex);
+  void redrawHeaderRegion(const ScreenLayout &L, const char *mosqueName,
+                          const char *headerLabel);
+  void redrawStatusBarRegion(const StatusInfo &statusInfo);
 };
