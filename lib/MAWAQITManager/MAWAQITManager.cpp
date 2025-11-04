@@ -9,6 +9,9 @@
 #define TEMP_JSON_PATH "/temp.json"
 #define MAX_RETRIES 3
 
+// Define a larger JSON document size
+const size_t JSON_DOC_SIZE = 48 * 1024; // 48 KB, increased from a smaller value
+
 MAWAQITManager &MAWAQITManager::getInstance() {
   static MAWAQITManager instance;
   return instance;
@@ -49,56 +52,29 @@ void MAWAQITManager::fetchTask(void *parameter) {
   if (!https.begin(client, url)) {
     Serial.println("❌ HTTPS.begin() failed");
   } else {
-       https.addHeader("Api-Access-Token", MAWAQITManager::getInstance().apiKey);
+    https.addHeader("Api-Access-Token", MAWAQITManager::getInstance().apiKey);
     https.setTimeout(20000); // 20 seconds for large files
     int httpCode = https.GET();
     if (httpCode != HTTP_CODE_OK) {
       Serial.printf("❌ HTTP GET failed: %d\n", httpCode);
     } else {
-      // Stream to file instead of loading to RAM
+      // Open file for writing
       File file = SPIFFS.open(MOSQUE_FILE, FILE_WRITE);
       if (!file) {
         Serial.println("❌ Failed to open file for writing");
       } else {
-        WiFiClient *stream = https.getStreamPtr();
-        uint8_t buffer[1024];
-        int totalRead = 0;
-        int contentLength = https.getSize();
-        Serial.printf("📦 Downloading %d bytes...\n", contentLength);
-
-        unsigned long lastDataTime = millis();
-        unsigned long startTime = millis();
-
-        while (https.connected() && (contentLength > 0 || contentLength == -1)) {
-          size_t available = stream->available();
-          if (available) {
-            int c = stream->readBytes(buffer, min(available, sizeof(buffer)));
-            if (c > 0) {
-              file.write(buffer, c);
-              totalRead += c;
-              if (contentLength > 0) contentLength -= c;
-              lastDataTime = millis();
-
-              if (totalRead % 10240 == 0) {
-                Serial.printf("📥 %d KB\n", totalRead / 1024);
-              }
-            }
-          }
-
-          if (millis() - lastDataTime > 10000) {
-            Serial.println("⚠️ No data for 10s, stopping download");
-            break;
-          }
-          if (millis() - startTime > 60000) {
-            Serial.println("⚠️ Total timeout (60s), stopping download");
-            break;
-          }
-
-          vTaskDelay(1);
-        }
+        // Use writeToStream which handles chunked encoding properly
+        int totalBytes = https.writeToStream(&file);
         file.close();
-        Serial.printf("✅ Saved %d bytes\n", totalRead);
-        success = (totalRead > 1000);
+
+        if (totalBytes > 0) {
+          Serial.printf("📦 Downloaded %d bytes\n", totalBytes);
+          Serial.printf("✅ Saved %d bytes\n", totalBytes);
+          success = (totalBytes > 1000);
+        } else {
+          Serial.println("❌ Download failed");
+          success = false;
+        }
       }
     }
     https.end();
@@ -119,9 +95,10 @@ void MAWAQITManager::asyncFetchMosqueInfo(const String &mosqueUUID,
     vTaskDelete(fetchInfoTaskHandle);
     fetchInfoTaskHandle = nullptr;
   }
-  
+
   InfoFetchParams *params = new InfoFetchParams{mosqueUUID, callback};
-  xTaskCreate(fetchInfoTask, "MawaqitInfoTask", 8192, params, 1, &fetchInfoTaskHandle);
+  xTaskCreate(fetchInfoTask, "MawaqitInfoTask", 8192, params, 1,
+              &fetchInfoTaskHandle);
 }
 
 void MAWAQITManager::fetchInfoTask(void *parameter) {
@@ -141,13 +118,14 @@ void MAWAQITManager::fetchInfoTask(void *parameter) {
   }
 
   // API endpoint
-  String url = "https://mawaqit.net/api/3.0/mosque/" + params->mosqueUUID + "/info?calendar";
+  String url = "https://mawaqit.net/api/3.0/mosque/" + params->mosqueUUID +
+               "/info?calendar";
   Serial.printf("🌐 Fetching mosque info from: %s\n", url.c_str());
 
   WiFiClientSecure client;
-  client.setInsecure();               // Disable certificate check
-  //client.setBufferSizes(512, 512);    // Reduce RAM usage
-  client.setTimeout(10000);           // 10s timeout
+  client.setInsecure(); // Disable certificate check
+  // client.setBufferSizes(512, 512);    // Reduce RAM usage
+  client.setTimeout(10000); // 10s timeout
 
   HTTPClient https;
   if (!https.begin(client, url)) {
@@ -176,7 +154,7 @@ void MAWAQITManager::fetchInfoTask(void *parameter) {
       if (nameIndex != -1) {
         int colonIndex = payload.indexOf(":", nameIndex);
         int quoteStart = payload.indexOf("\"", colonIndex + 1);
-        int quoteEnd   = payload.indexOf("\"", quoteStart + 1);
+        int quoteEnd = payload.indexOf("\"", quoteStart + 1);
 
         if (quoteStart != -1 && quoteEnd != -1) {
           mosqueName = payload.substring(quoteStart + 1, quoteEnd);

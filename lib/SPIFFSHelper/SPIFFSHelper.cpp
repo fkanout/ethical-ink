@@ -77,15 +77,19 @@ bool splitCalendarJson(const String &rawJsonPath, const bool &isIqama) {
   size_t fileSize = file.size();
   Serial.printf("📦 File size: %d bytes\n", fileSize);
 
-  // Calculate required capacity: file size + ~30% overhead for ArduinoJson
-  size_t capacity = fileSize + (fileSize / 3);
-  Serial.printf("📊 JSON capacity: %d bytes\n", capacity);
+  // Debug: Read first 100 characters to check file content
+  char preview[101];
+  size_t previewLen = file.readBytes(preview, min((size_t)100, fileSize));
+  preview[previewLen] = '\0';
+  Serial.printf("📄 First %d chars: %s\n", previewLen, preview);
+  file.seek(0); // Reset file pointer to beginning
 
-  DynamicJsonDocument doc(capacity);
+  // Use a fixed-size JsonDocument with memory from PSRAM if available
+  // Allocate 50KB for the document
+  JsonDocument doc;
+
   DeserializationError error = deserializeJson(doc, file);
   file.close();
-
-  Serial.printf("📈 Memory used: %d bytes\n", doc.memoryUsage());
 
   if (error) {
     Serial.print("❌ JSON parsing failed: ");

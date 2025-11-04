@@ -1,33 +1,32 @@
 #include "AppStateManager.h"
 #include "EventsManager.h"
+#include "GxEPD2Adapter.h"
 #include "SPIFFSHelper.h"
+#include "ScreenUI.h"
+#include "StatusBar.h"
 #include "WiFiManager.h"
 #include <AppState.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <BLEManager.h>
 #include <CalendarManager.h>
-#include <MAWAQITManager.h>
-#include <RTCManager.h>
-#include <GxEPD2_BW.h>
-#include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold18pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
+#include <Fonts/FreeMonoBold9pt7b.h>
+#include <GxEPD2_BW.h>
+#include <MAWAQITManager.h>
+#include <RTCManager.h>
 #include <SPI.h>
-#include "ScreenUI.h"
-#include "GxEPD2Adapter.h"
-#include "StatusBar.h"
 
 // Pins for E-paper
-#define EPD_CS   10
-#define EPD_DC   9
-#define EPD_RST  8
+#define EPD_CS 10
+#define EPD_DC 9
+#define EPD_RST 8
 #define EPD_BUSY 7
 
 // 7.5" b/w (800x480)
-GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> display(
-  GxEPD2_750_T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
-);
+GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT>
+    display(GxEPD2_750_T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
 
 // ===== حالة الرسم (تعيش في RTC Slow Memory) =====
 struct RenderState {
@@ -37,7 +36,6 @@ struct RenderState {
 };
 // RTC slow memory state (optional)
 RTC_DATA_ATTR RenderState g_renderState;
-
 
 CalendarManager calendarManager;
 unsigned int sleepDuration = 60; // in seconds, default fallback
@@ -148,6 +146,22 @@ void executeMainTask() {
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
   unsigned long startTime = millis();
 
+  // Load mosque name from saved info file if available
+  if (SPIFFS.exists("/mosque_info.json")) {
+    File file = SPIFFS.open("/mosque_info.json", FILE_READ);
+    if (file) {
+      String json = file.readString();
+      file.close();
+
+      JsonDocument doc;
+      DeserializationError error = deserializeJson(doc, json);
+      if (!error && doc["name"].is<String>()) {
+        mosqueName = doc["name"].as<String>();
+        Serial.printf("📖 Loaded mosque name: %s\n", mosqueName.c_str());
+      }
+    }
+  }
+
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
     Serial.println("❌ Failed to get time.");
@@ -165,8 +179,10 @@ void executeMainTask() {
 
   std::vector<String> todayPrayer = todayAndNextDayPrayerTimes.todayPrayerTimes;
   std::vector<String> todayIqama = todayAndNextDayPrayerTimes.todayIqamaTimes;
-  std::vector<String> nextDayPrayer = todayAndNextDayPrayerTimes.nextDayPrayerTimes;
-  std::vector<String> nextDayIqama = todayAndNextDayPrayerTimes.nextDayIqamaTimes;
+  std::vector<String> nextDayPrayer =
+      todayAndNextDayPrayerTimes.nextDayPrayerTimes;
+  std::vector<String> nextDayIqama =
+      todayAndNextDayPrayerTimes.nextDayIqamaTimes;
 
   bool isShowNextDayPrayers = false;
   struct NextPrayerInfo {
@@ -174,7 +190,8 @@ void executeMainTask() {
     String name;
   } nextPrayerInfo;
 
-  if (todayPrayer.empty() || todayIqama.empty() || nextDayPrayer.empty() || nextDayIqama.empty()) {
+  if (todayPrayer.empty() || todayIqama.empty() || nextDayPrayer.empty() ||
+      nextDayIqama.empty()) {
     Serial.println("❌ Missing prayer times or iqama times!");
     return;
   }
@@ -202,22 +219,39 @@ void executeMainTask() {
   String IQAMA_Fajr, IQAMA_Dhuhr, IQAMA_Asr, IQAMA_Maghrib, IQAMA_Isha;
 
   if (isShowNextDayPrayers) {
-    FAJR = nextDayPrayer[0]; SUNRISE = nextDayPrayer[1]; DHUHR = nextDayPrayer[2];
-    ASR = nextDayPrayer[3]; MAGHRIB = nextDayPrayer[4]; ISHA = nextDayPrayer[5];
-    IQAMA_Fajr = nextDayIqama[0]; IQAMA_Dhuhr = nextDayIqama[1]; IQAMA_Asr = nextDayIqama[2];
-    IQAMA_Maghrib = nextDayIqama[3]; IQAMA_Isha = nextDayIqama[4];
+    FAJR = nextDayPrayer[0];
+    SUNRISE = nextDayPrayer[1];
+    DHUHR = nextDayPrayer[2];
+    ASR = nextDayPrayer[3];
+    MAGHRIB = nextDayPrayer[4];
+    ISHA = nextDayPrayer[5];
+    IQAMA_Fajr = nextDayIqama[0];
+    IQAMA_Dhuhr = nextDayIqama[1];
+    IQAMA_Asr = nextDayIqama[2];
+    IQAMA_Maghrib = nextDayIqama[3];
+    IQAMA_Isha = nextDayIqama[4];
   } else {
-    FAJR = todayPrayer[0]; SUNRISE = todayPrayer[1]; DHUHR = todayPrayer[2];
-    ASR = todayPrayer[3]; MAGHRIB = todayPrayer[4]; ISHA = todayPrayer[5];
-    IQAMA_Fajr = todayIqama[0]; IQAMA_Dhuhr = todayIqama[1]; IQAMA_Asr = todayIqama[2];
-    IQAMA_Maghrib = todayIqama[3]; IQAMA_Isha = todayIqama[4];
+    FAJR = todayPrayer[0];
+    SUNRISE = todayPrayer[1];
+    DHUHR = todayPrayer[2];
+    ASR = todayPrayer[3];
+    MAGHRIB = todayPrayer[4];
+    ISHA = todayPrayer[5];
+    IQAMA_Fajr = todayIqama[0];
+    IQAMA_Dhuhr = todayIqama[1];
+    IQAMA_Asr = todayIqama[2];
+    IQAMA_Maghrib = todayIqama[3];
+    IQAMA_Isha = todayIqama[4];
   }
 
-  Countdown countdown = calculateCountdownToNextPrayer(nextPrayerInfo.time, timeinfo);
+  Countdown countdown =
+      calculateCountdownToNextPrayer(nextPrayerInfo.time, timeinfo);
   char countdownStr[16];
   sprintf(countdownStr, "%02d:%02d", countdown.hours, countdown.minutes);
 
-  String title = String("✨══════•••••• Prayer times for ") + (isShowNextDayPrayers ? "tomorrow" : "today") + " ••••••══════✨";
+  String title = String("✨══════•••••• Prayer times for ") +
+                 (isShowNextDayPrayers ? "tomorrow" : "today") +
+                 " ••••••══════✨";
 
   Serial.println(title.c_str());
   Serial.printf("  ⏰ %s  %s\n", FAJR.c_str(), IQAMA_Fajr.c_str());
@@ -226,48 +260,73 @@ void executeMainTask() {
   Serial.printf("  ⏰ %s  %s\n", ASR.c_str(), IQAMA_Asr.c_str());
   Serial.printf("  ⏰ %s  %s\n", MAGHRIB.c_str(), IQAMA_Maghrib.c_str());
   Serial.printf("  ⏰ %s  %s\n", ISHA.c_str(), IQAMA_Isha.c_str());
-  Serial.printf("  ⏳%s in %02d:%02d\n", nextPrayerInfo.name.c_str(), countdown.hours, countdown.minutes);
+  Serial.printf("  ⏳%s in %02d:%02d\n", nextPrayerInfo.name.c_str(),
+                countdown.hours, countdown.minutes);
   Serial.println("✨══════•••••••••••••••••••••••••••••••••••══════✨");
 
   // ---------- E-paper display with status bar ----------
-  const char* PRAYER_NAMES_ROW[5] = {"Fajr","Dhuhr","Asr","Maghrib","Isha"};
-  const char* prayerTimesRow[5]   = {
-    FAJR.c_str(), DHUHR.c_str(), ASR.c_str(), MAGHRIB.c_str(), ISHA.c_str()
-  };
+  const char *PRAYER_NAMES_ROW[5] = {"Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"};
+  const char *prayerTimesRow[5] = {FAJR.c_str(), DHUHR.c_str(), ASR.c_str(),
+                                   MAGHRIB.c_str(), ISHA.c_str()};
 
-   // NEW: Create iqama times array (Note: No Sunrise iqama, so we skip index 1)
-  const char* iqamaTimesRow[5] = {
-    IQAMA_Fajr.c_str(), IQAMA_Dhuhr.c_str(), IQAMA_Asr.c_str(), 
-    IQAMA_Maghrib.c_str(), IQAMA_Isha.c_str()
-  };
+  // NEW: Create iqama times array (Note: No Sunrise iqama, so we skip index 1)
+  const char *iqamaTimesRow[5] = {IQAMA_Fajr.c_str(), IQAMA_Dhuhr.c_str(),
+                                  IQAMA_Asr.c_str(), IQAMA_Maghrib.c_str(),
+                                  IQAMA_Isha.c_str()};
 
   GxEPD2Adapter<decltype(display)> epdAdapter(display);
-  ScreenUI ui(epdAdapter, /*screenW*/800, /*screenH*/480);
+  ScreenUI ui(epdAdapter, /*screenW*/ 800, /*screenH*/ 480);
   ScreenLayout L = ui.computeLayout();
 
-  int highlightIndex = ScreenUI::getNextPrayerIndex(prayerTimesRow, timeinfo.tm_hour, timeinfo.tm_min);
-  
+  int highlightIndex = ScreenUI::getNextPrayerIndex(
+      prayerTimesRow, timeinfo.tm_hour, timeinfo.tm_min);
+
   // Get status information
   StatusInfo statusInfo = StatusBar::getStatusInfo(g_bleAdvertising);
-  
-  // Use the fetched mosque name
-  const char* MOSQUE_NAME = mosqueName.c_str();
 
-   if (!g_renderState.initialized) {
+  // Use the fetched mosque name, fallback to static name if it contains mostly
+  // non-ASCII (Arabic) characters
+  String displayName = mosqueName;
+
+  // Count displayable vs non-displayable characters
+  int asciiCount = 0;
+  int totalCount = displayName.length();
+
+  for (int i = 0; i < totalCount; i++) {
+    unsigned char c = displayName[i];
+    // Check if character is ASCII letter or number
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+        (c >= '0' && c <= '9')) {
+      asciiCount++;
+    }
+  }
+
+  // If less than 20% of characters are ASCII letters/numbers, use fallback
+  if (totalCount == 0 || asciiCount < (totalCount * 0.2)) {
+    displayName = "HAMA City - Syria";
+    Serial.println("📝 Using fallback mosque name (Arabic not displayable)");
+  }
+
+  const char *MOSQUE_NAME = displayName.c_str();
+
+  if (!g_renderState.initialized) {
     // UPDATED: Pass iqama times to fullRender
-    ui.fullRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, 
-                              prayerTimesRow, iqamaTimesRow, highlightIndex, statusInfo);
+    ui.fullRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW,
+                               prayerTimesRow, iqamaTimesRow, highlightIndex,
+                               statusInfo);
   } else {
     // UPDATED: Pass iqama times to partialRender
-    ui.partialRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW, 
-                                 prayerTimesRow, iqamaTimesRow, highlightIndex, statusInfo);
+    ui.partialRenderWithStatusBar(L, MOSQUE_NAME, countdownStr,
+                                  PRAYER_NAMES_ROW, prayerTimesRow,
+                                  iqamaTimesRow, highlightIndex, statusInfo);
   }
 
   // persist (optional)
-  g_renderState.initialized   = true;
+  g_renderState.initialized = true;
   g_renderState.lastHighlight = highlightIndex;
   for (int i = 0; i < 5; ++i) {
-    snprintf(g_renderState.times[i], sizeof g_renderState.times[i], "%s", prayerTimesRow[i]);
+    snprintf(g_renderState.times[i], sizeof g_renderState.times[i], "%s",
+             prayerTimesRow[i]);
   }
 }
 
@@ -275,7 +334,7 @@ void executeMainTask() {
 
 // Helper function to get mosque UUID from config file
 String getMosqueUUID() {
-  const char* DEFAULT_UUID = "f9a51508-05b7-4324-a7e8-4acbc2893c02";
+  const char *DEFAULT_UUID = "f9a51508-05b7-4324-a7e8-4acbc2893c02";
 
   String configJson = readJsonFile("/mosque_config.json");
   if (configJson.isEmpty() || configJson == "{}") {
@@ -302,64 +361,54 @@ String getMosqueUUID() {
 
 void fetchPrayerTimesIfDue() {
   Serial.println("📡 Fetching prayer times and mosque info from MAWAQIT...");
-  
+
   // Check if mosque UUID is set
   if (strlen(rtcData.mosqueUUID) == 0) {
-    Serial.println("⚠️ No mosque UUID configured. Please configure via BLE first.");
+    Serial.println(
+        "⚠️ No mosque UUID configured. Please configure via BLE first.");
     state = SLEEPING;
     return;
   }
-  
-  Serial.printf("🕌 Using mosque UUID: %s", rtcData.mosqueUUID);
 
+  Serial.printf("🕌 Using mosque UUID: %s", rtcData.mosqueUUID);
 
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
 
   WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
-    Serial.println("❌ Failed to connect to Wi-Fi to fetch prayer times if due");
+    Serial.println(
+        "❌ Failed to connect to Wi-Fi to fetch prayer times if due");
     state = SLEEPING;
   });
-  
+
   WiFiManager::getInstance().onWifiConnectedCallback([]() {
     Serial.println("✅ Connected to Wi-Fi for MAWAQIT fetch.");
-    MAWAQITManager::getInstance().setApiKey("86ed48fd-691e-4370-a9bf-ae74f788ed54");
+    MAWAQITManager::getInstance().setApiKey(
+        "86ed48fd-691e-4370-a9bf-ae74f788ed54");
 
     // Get mosque UUID from config file
     String mosqueUUID = getMosqueUUID();
 
     // First fetch mosque info to get the name
     MAWAQITManager::getInstance().asyncFetchMosqueInfo(
-        mosqueUUID,
-        [mosqueUUID](bool success, const char *path) {
-          if (success) {
-            Serial.printf("📂 Mosque info file ready at: %s\n", path);
-
-            // Read and parse the mosque info to extract the name
-            File file = SPIFFS.open("/mosque_info.json", FILE_READ);
-            if (file) {
-              String json = file.readString();
-              file.close();
-
-              DynamicJsonDocument doc(2048);
-              DeserializationError error = deserializeJson(doc, json);
-              if (!error && doc.containsKey("name")) {
-                mosqueName = doc["name"].as<String>();
-                Serial.printf("🕌 Updated mosque name: %s\n", mosqueName.c_str());
-              }
-            }
+        mosqueUUID, [mosqueUUID](bool success, const char *name) {
+          if (success && name) {
+            mosqueName = String(name);
+            Serial.printf("🕌 Updated mosque name: %s\n", mosqueName.c_str());
           } else {
-            Serial.println("⚠️ Failed to fetch mosque info. Using default name.");
+            Serial.println(
+                "⚠️ Failed to fetch mosque info. Using default name.");
           }
 
           // Now fetch prayer times using the same UUID
           MAWAQITManager::getInstance().asyncFetchPrayerTimes(
-              mosqueUUID,
-              [](bool success, const char *path) {
+              mosqueUUID, [](bool success, const char *path) {
                 if (success) {
-                  Serial.printf("📂 Valid prayer times file ready at: %s\n", path);
+                  Serial.printf("📂 Valid prayer times file ready at: %s\n",
+                                path);
                   splitCalendarJson(MOSQUE_FILE);
                   splitCalendarJson(MOSQUE_FILE, true);
-                  rtcData.mosqueLastUpdateMillis = RTCManager::getInstance().getEpochTime();
+                  rtcData.mosqueLastUpdateMillis =
+                      RTCManager::getInstance().getEpochTime();
                   AppStateManager::save();
                 } else {
                   Serial.println("⚠️ Failed to fetch valid data after retries.");
@@ -397,8 +446,9 @@ void handleCheckingTime() {
     state = RUNNING_MAIN_TASK;
   } else {
     Serial.println("❌ Time not synced");
-    //state = CONNECTING_WIFI_WITH_SAVED_CREDENTIALS;
-    state = ADVERTISING_BLE;  // Use BLE for WiFi setup (comment this to use saved credentials)
+    // state = CONNECTING_WIFI_WITH_SAVED_CREDENTIALS;
+    state = ADVERTISING_BLE; // Use BLE for WiFi setup (comment this to use
+                             // saved credentials)
   }
 }
 
@@ -423,7 +473,7 @@ void handleSyncingTime() {
   RTCManager &rtc = RTCManager::getInstance();
   if (rtc.syncTimeFromNTPWithOffset(3, 10000)) {
     Serial.println("✅ Time synced successfully");
-   // rtc.setTimeToSpecificHourAndMinute(20, 07, 5, 2); // for testing time 
+    // rtc.setTimeToSpecificHourAndMinute(20, 07, 5, 2); // for testing time
     state = RUNNING_MAIN_TASK;
   } else {
     Serial.println("❌ Failed to sync time");
@@ -488,13 +538,13 @@ void handleWaitingForWifiScan() {
         return;
       }
 
-      // Store credentials in global variables (defer write operations to avoid stack overflow)
+      // Store credentials in global variables (defer write operations to avoid
+      // stack overflow)
       g_receivedSSID = ssid;
       g_receivedPassword = password;
       g_receivedMosqueUUID = mosqueUuid;
 
-      Serial.printf("✅ Received WiFi: %s, Mosque UUID: %s\n",
-                    ssid.c_str(),
+      Serial.printf("✅ Received WiFi: %s, Mosque UUID: %s\n", ssid.c_str(),
                     mosqueUuid.isEmpty() ? "not provided" : mosqueUuid.c_str());
 
       // Transition to connecting state
@@ -518,18 +568,23 @@ void handleConnectingWifi() {
   wifi.onWifiConnectedCallback([]() {
     Serial.println("✅ Wi-Fi connected");
 
-    // Now it's safe to write to SPIFFS and RTC (we're in the main loop context after connection)
+    // Now it's safe to write to SPIFFS and RTC (we're in the main loop context
+    // after connection)
     if (!g_receivedMosqueUUID.isEmpty()) {
       // Save to RTC memory (primary storage)
-      strncpy(rtcData.mosqueUUID, g_receivedMosqueUUID.c_str(), sizeof(rtcData.mosqueUUID) - 1);
-      rtcData.mosqueUUID[sizeof(rtcData.mosqueUUID) - 1] = '\0'; // Ensure null termination
+      strncpy(rtcData.mosqueUUID, g_receivedMosqueUUID.c_str(),
+              sizeof(rtcData.mosqueUUID) - 1);
+      rtcData.mosqueUUID[sizeof(rtcData.mosqueUUID) - 1] =
+          '\0'; // Ensure null termination
       AppStateManager::save();
       Serial.printf("💾 Mosque UUID saved to RTC: %s\n", rtcData.mosqueUUID);
 
       // Also save to SPIFFS for backup
-      String mosqueConfigJson = "{\"mosque_uuid\":\"" + g_receivedMosqueUUID + "\"}";
+      String mosqueConfigJson =
+          "{\"mosque_uuid\":\"" + g_receivedMosqueUUID + "\"}";
       writeJsonFile("/mosque_config.json", mosqueConfigJson);
-      Serial.printf("💾 Mosque UUID saved to SPIFFS: %s\n", g_receivedMosqueUUID.c_str());
+      Serial.printf("💾 Mosque UUID saved to SPIFFS: %s\n",
+                    g_receivedMosqueUUID.c_str());
     }
 
     BLEManager::getInstance().stopAdvertising();
@@ -569,17 +624,20 @@ void handleSleeping() {
   if (getLocalTime(&timeinfo)) {
     int currentSecond = timeinfo.tm_sec;
     sleepDuration = 60 - currentSecond;
-    if (sleepDuration == 60) sleepDuration = 0;  // edge case
+    if (sleepDuration == 60)
+      sleepDuration = 0; // edge case
   } else {
-    Serial.println("⚠️ Failed to get time for sleep alignment. Using 60s fallback.");
+    Serial.println(
+        "⚠️ Failed to get time for sleep alignment. Using 60s fallback.");
     sleepDuration = 60;
   }
 
   // Announce BEFORE sleeping
-  Serial.printf("💤 Entering LIGHT SLEEP for %d seconds to align with next full minute...\n",
+  Serial.printf("💤 Entering LIGHT SLEEP for %d seconds to align with next "
+                "full minute...\n",
                 sleepDuration);
   Serial.flush();
-  delay(20);  // give UART time to drain
+  delay(20); // give UART time to drain
 
   // Sleep & wake
   esp_sleep_enable_timer_wakeup((uint64_t)sleepDuration * 1000000ULL);
@@ -596,8 +654,6 @@ void handleSleeping() {
   // Continue with main task next
   state = RUNNING_MAIN_TASK;
 }
-
-
 
 void handleMainTaskState() {
   Serial.println("⚙️ Running main task...");
