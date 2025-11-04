@@ -73,9 +73,9 @@ public:
       // Draw crossed out WiFi icon
       drawWifiSignalBars(display, x, y, 0);
       display.drawLine(x, y, x + WIFI_ICON_WIDTH - 1, y + WIFI_ICON_HEIGHT - 1,
-                       0x0000);
+                       0xFFFF); // White line
       display.drawLine(x, y + WIFI_ICON_HEIGHT - 1, x + WIFI_ICON_WIDTH - 1, y,
-                       0x0000);
+                       0xFFFF); // White line
       return;
     }
 
@@ -99,12 +99,14 @@ public:
       return; // Don't draw if not advertising
 
     // Simple Bluetooth "B" icon
-    display.drawLine(x + 2, y, x + 2, y + BLE_ICON_HEIGHT - 1, 0x0000);
-    display.drawLine(x + 2, y, x + 8, y + 4, 0x0000);
-    display.drawLine(x + 2, y + 8, x + 8, y + 4, 0x0000);
-    display.drawLine(x + 2, y + 8, x + 8, y + 12, 0x0000);
-    display.drawLine(x + 2, y + BLE_ICON_HEIGHT - 1, x + 8, y + 12, 0x0000);
-    display.drawLine(x + 8, y + 4, x + 8, y + 12, 0x0000);
+    display.drawLine(x + 2, y, x + 2, y + BLE_ICON_HEIGHT - 1,
+                     0xFFFF);                              // White line
+    display.drawLine(x + 2, y, x + 8, y + 4, 0xFFFF);      // White line
+    display.drawLine(x + 2, y + 8, x + 8, y + 4, 0xFFFF);  // White line
+    display.drawLine(x + 2, y + 8, x + 8, y + 12, 0xFFFF); // White line
+    display.drawLine(x + 2, y + BLE_ICON_HEIGHT - 1, x + 8, y + 12,
+                     0xFFFF);                              // White line
+    display.drawLine(x + 8, y + 4, x + 8, y + 12, 0xFFFF); // White line
   }
 
   // Draw complete status bar
@@ -117,11 +119,11 @@ public:
 
     // Set font for status bar
     display.setFont(font);
-    display.setTextColor(0x0000); // Black text
+    display.setTextColor(0xFFFF); // White text
 
     // Draw top border line
     display.drawLine(0, STATUS_BAR_HEIGHT, screenWidth, STATUS_BAR_HEIGHT,
-                     0x0000);
+                     0xFFFF); // White line
 
     // Left side: Date
     display.setCursor(MARGIN, STATUS_BAR_HEIGHT - 6);
@@ -154,7 +156,7 @@ public:
     // Time validity indicator (small filled rectangle if time is not synced)
     if (!status.timeValid) {
       display.fillRect(centerX + timeW + 8, STATUS_BAR_HEIGHT - 14, 4, 4,
-                       0x0000);
+                       0xFFFF); // White indicator
     }
   }
 
@@ -168,9 +170,10 @@ private:
       int barY = y + WIFI_ICON_HEIGHT - barHeight;
 
       if (i < bars) {
-        display.fillRect(barX, barY, 3, barHeight, 0x0000);
+        display.fillRect(barX, barY, 3, barHeight, 0xFFFF); // White filled bars
       } else {
-        display.drawRect(barX, barY, 3, barHeight, 0x0000);
+        display.drawRect(barX, barY, 3, barHeight,
+                         0xFFFF); // White outline bars
       }
     }
   }

@@ -310,12 +310,20 @@ void executeMainTask() {
   const char *MOSQUE_NAME = displayName.c_str();
 
   if (!g_renderState.initialized) {
-    // UPDATED: Pass iqama times to fullRender
+    // First time: Full render
+    ui.fullRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW,
+                               prayerTimesRow, iqamaTimesRow, highlightIndex,
+                               statusInfo);
+  } else if (g_renderState.lastHighlight != highlightIndex) {
+    // Prayer changed: Do full refresh
+    Serial.println("🔄 Prayer changed - doing full refresh");
     ui.fullRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW,
                                prayerTimesRow, iqamaTimesRow, highlightIndex,
                                statusInfo);
   } else {
-    // UPDATED: Pass iqama times to partialRender
+    // Same prayer: Only update countdown and status bar (minimal partial
+    // refresh)
+    Serial.println("⏱️ Same prayer - only updating countdown");
     ui.partialRenderWithStatusBar(L, MOSQUE_NAME, countdownStr,
                                   PRAYER_NAMES_ROW, prayerTimesRow,
                                   iqamaTimesRow, highlightIndex, statusInfo);
