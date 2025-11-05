@@ -23,26 +23,26 @@ ScreenLayout ScreenUI::computeLayout() const {
   L.boxH = 25;       // Taller header box
   L.spacing = 20;
   L.boxX = (W_ - L.boxW) / 2;
-  L.headerY = L.contentStartY + 10; // Start after status bar
+  L.headerY = L.contentStartY; // Move mosque name up by 10px (removed +10)
 
   // Countdown section - centered on screen
   // size box of countdown
   L.countdownW = W_ * 0.5; // 50% of screen width (400px)
-  L.countdownH = 130;      // Taller for better font display
+  L.countdownH = 100;      // Increased from 130 to 160 (added 30px to bottom)
   // Center vertically. (X will be computed where used to avoid changing the
   // header struct.)
-  L.countdownY = L.headerY + L.boxH + 100; // space under the mosque name
+  L.countdownY = L.headerY + L.boxH +
+                 50; // Reduced from 60 to 50 - push countdown up by 10px
 
   // Prayer times row - increased height to accommodate iqama times
-  L.rowY =
-      L.countdownY + L.countdownH + 30; // Spacing below the centered countdown
-  L.prayerBoxW = (W_ - 60) / 5;         // Divide screen evenly with margins
-  L.prayerBoxH =
-      H_ - L.rowY - 10; // Use remaining height (should be taller now)
+  L.prayerBoxW = (W_ - 60) / 5; // Divide screen evenly with margins
+  L.prayerBoxH = 150;           // Fixed height
   L.prayerSpacing = 10;
   const int count = 5;
   L.rowW = count * L.prayerBoxW + (count - 1) * L.prayerSpacing;
   L.rowStartX = (W_ - L.rowW) / 2;
+  L.rowY =
+      H_ - L.prayerBoxH - 10; // Position at bottom of screen with 10px margin
 
   return L;
 }
@@ -73,9 +73,10 @@ void ScreenUI::fullRenderWithStatusBar(
     d_.setCursor(textX_name, textY_name);
     d_.print(mosqueText);
 
-    // "Prayer in" label - white text
+    // "Prayer in" label - white text - positioned just after mosque name
     const int16_t countdownX = (W_ - L.countdownW) / 2;
-    const int16_t labelTopY = L.countdownY - 50;
+    const int16_t labelTopY =
+        L.countdownY - 40; // 40px space above countdown box - 10px closer
 
     const char *hlName = (highlightIndex >= 0 && highlightIndex < 5 &&
                           prayerNames[highlightIndex])
@@ -95,19 +96,72 @@ void ScreenUI::fullRenderWithStatusBar(
     d_.print(labelBuf);
 
     // Centered countdown box - white border and white text
-    d_.setFont(&Cairo_Bold70pt7b);
+    d_.drawRect(countdownX, L.countdownY, L.countdownW, L.countdownH,
+                GxEPD_WHITE);
+
+    // Draw countdown in large font - pushed to top of box
+    d_.setFont(&Cairo_Bold60pt7b); // Changed from 70pt to 60pt
     int16_t x1_count, y1_count;
     uint16_t w_count, h_count;
     d_.getTextBounds(countdownStr, 0, 0, &x1_count, &y1_count, &w_count,
                      &h_count);
-    d_.drawRect(countdownX, L.countdownY, L.countdownW, L.countdownH,
-                GxEPD_WHITE);
     int16_t textX_count = countdownX + (L.countdownW - w_count) / 2 - x1_count;
-    int16_t textY_count =
-        L.countdownY + (L.countdownH - h_count) / 2 - y1_count;
+    int16_t textY_count = L.countdownY + (L.countdownH - h_count) / 2 -
+                          y1_count; // Centered vertically in the box
     d_.setTextColor(GxEPD_WHITE);
     d_.setCursor(textX_count, textY_count);
     d_.print(countdownStr);
+
+    // Get current prayer time and iqama for countdown box
+    const char *currentPrayerTime = (highlightIndex >= 0 && highlightIndex < 5)
+                                        ? prayerTimes[highlightIndex]
+                                        : nullptr;
+    const char *currentIqamaTime = (highlightIndex >= 0 && highlightIndex < 5)
+                                       ? iqamaTimes[highlightIndex]
+                                       : nullptr;
+
+    // Calculate iqama delay
+    int delay = 0;
+    if (currentPrayerTime && currentIqamaTime) {
+      if (strchr(currentIqamaTime, ':') == nullptr) {
+        delay = atoi(currentIqamaTime);
+      } else {
+        int prayerH = 0, prayerM = 0, iqamaH = 0, iqamaM = 0;
+        sscanf(currentPrayerTime, "%d:%d", &prayerH, &prayerM);
+        sscanf(currentIqamaTime, "%d:%d", &iqamaH, &iqamaM);
+        delay = (iqamaH * 60 + iqamaM) - (prayerH * 60 + prayerM);
+      }
+    }
+    char iqamaDelayStr[8];
+    snprintf(iqamaDelayStr, sizeof(iqamaDelayStr), "+%d", delay);
+
+    // Draw prayer time centered vertically on screen
+    if (currentPrayerTime) {
+      d_.setFont(&Cairo_Bold24pt7b);
+      d_.getTextBounds(currentPrayerTime, 0, 0, &x1_count, &y1_count, &w_count,
+                       &h_count);
+      textX_count =
+          (W_ / 2) - (w_count / 2) - x1_count; // Center horizontally on screen
+      textY_count =
+          (H_ / 2) - 20 -
+          y1_count; // Center vertically on screen (slightly above center)
+      d_.setTextColor(GxEPD_WHITE);
+      d_.setCursor(textX_count, textY_count);
+      d_.print(currentPrayerTime);
+    }
+
+    // Draw iqama delay centered below prayer time on screen
+    d_.setFont(&Cairo_Bold24pt7b);
+    d_.getTextBounds(iqamaDelayStr, 0, 0, &x1_count, &y1_count, &w_count,
+                     &h_count);
+    textX_count =
+        (W_ / 2) - (w_count / 2) - x1_count; // Center horizontally on screen
+    textY_count =
+        (H_ / 2) + 20 -
+        y1_count; // Center vertically on screen (slightly below center)
+    d_.setTextColor(GxEPD_WHITE);
+    d_.setCursor(textX_count, textY_count);
+    d_.print(iqamaDelayStr);
 
     // Prayer time boxes row with iqama times - custom drawing for reversed
     // colors
@@ -161,7 +215,7 @@ void ScreenUI::fullRenderWithStatusBar(
         d_.print(prayerTimes[i]);
 
         // Iqama Delay
-        d_.setFont(&Cairo_Bold18pt7b);
+        d_.setFont(&Cairo_Bold24pt7b);
         d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
         int16_t iqamaX = x + (L.prayerBoxW - w) / 2 - x1;
         int16_t iqamaY = L.rowY + L.prayerBoxH - 10;
@@ -193,7 +247,7 @@ void ScreenUI::fullRenderWithStatusBar(
         d_.print(prayerTimes[i]);
 
         // Iqama Delay
-        d_.setFont(&Cairo_Bold18pt7b);
+        d_.setFont(&Cairo_Bold24pt7b);
         d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
         int16_t iqamaX = x + (L.prayerBoxW - w) / 2 - x1;
         int16_t iqamaY = L.rowY + L.prayerBoxH - 10;
@@ -213,9 +267,15 @@ void ScreenUI::partialRenderWithStatusBar(
   // Update status bar
   redrawStatusBarRegion(statusInfo);
 
-  // Only update countdown - skip header and prayer boxes since they haven't
-  // changed
-  redrawCountdownRegion(L, countdownStr);
+  // Only update countdown with prayer time and iqama - skip header and prayer
+  // boxes since they haven't changed
+  const char *currentPrayerTime = (highlightIndex >= 0 && highlightIndex < 5)
+                                      ? prayerTimes[highlightIndex]
+                                      : nullptr;
+  const char *currentIqamaTime = (highlightIndex >= 0 && highlightIndex < 5)
+                                     ? iqamaTimes[highlightIndex]
+                                     : nullptr;
+  redrawCountdownRegion(L, countdownStr, currentPrayerTime, currentIqamaTime);
 }
 
 void ScreenUI::redrawStatusBarRegion(const StatusInfo &statusInfo) {
@@ -364,7 +424,7 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
       d_.print(times[i]);
 
       // Iqama delay (third section)
-      d_.setFont(&Cairo_Bold18pt7b);
+      d_.setFont(&Cairo_Bold24pt7b);
       d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
       int16_t iqamaX = x + (boxW - w) / 2 - x1;
       int16_t iqamaY = section3 - 15;
@@ -395,7 +455,7 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
       d_.print(times[i]);
 
       // Iqama delay (third section)
-      d_.setFont(&Cairo_Bold18pt7b);
+      d_.setFont(&Cairo_Bold24pt7b);
       d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
       int16_t iqamaX = x + (boxW - w) / 2 - x1;
       int16_t iqamaY = section3 - 15;
@@ -407,7 +467,9 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
 }
 
 void ScreenUI::redrawCountdownRegion(const ScreenLayout &L,
-                                     const char *countdownStr) {
+                                     const char *countdownStr,
+                                     const char *prayerTime,
+                                     const char *iqamaTime) {
   const int16_t countdownX = (W_ - L.countdownW) / 2;
   d_.setPartialWindow(countdownX, L.countdownY, L.countdownW, L.countdownH);
   d_.firstPage();
@@ -419,16 +481,55 @@ void ScreenUI::redrawCountdownRegion(const ScreenLayout &L,
     d_.drawRect(countdownX, L.countdownY, L.countdownW, L.countdownH,
                 GxEPD_WHITE);
 
-    // Draw white text
-    d_.setFont(&Cairo_Bold70pt7b);
+    // Draw countdown in large font - pushed to top
+    d_.setFont(
+        &Cairo_Bold60pt7b); // Changed from 70pt to 60pt to match full render
     int16_t x1, y1;
     uint16_t w, h;
     d_.getTextBounds(countdownStr, 0, 0, &x1, &y1, &w, &h);
     int16_t textX = countdownX + (L.countdownW - w) / 2 - x1;
-    int16_t textY = L.countdownY + (L.countdownH - h) / 2 - y1;
+    int16_t textY = L.countdownY + (L.countdownH - h) / 2 -
+                    y1; // Centered vertically in the box
     d_.setTextColor(GxEPD_WHITE);
     d_.setCursor(textX, textY);
     d_.print(countdownStr);
+
+    // Calculate iqama delay
+    int delay = 0;
+    if (prayerTime && iqamaTime) {
+      if (strchr(iqamaTime, ':') == nullptr) {
+        delay = atoi(iqamaTime);
+      } else {
+        int prayerH = 0, prayerM = 0, iqamaH = 0, iqamaM = 0;
+        sscanf(prayerTime, "%d:%d", &prayerH, &prayerM);
+        sscanf(iqamaTime, "%d:%d", &iqamaH, &iqamaM);
+        delay = (iqamaH * 60 + iqamaM) - (prayerH * 60 + prayerM);
+      }
+    }
+    char iqamaDelayStr[8];
+    snprintf(iqamaDelayStr, sizeof(iqamaDelayStr), "+%d", delay);
+
+    // Draw prayer time centered vertically on screen
+    if (prayerTime) {
+      d_.setFont(&Cairo_Bold24pt7b);
+      d_.getTextBounds(prayerTime, 0, 0, &x1, &y1, &w, &h);
+      textX = (W_ / 2) - (w / 2) - x1; // Center horizontally on screen
+      textY = (H_ / 2) - 20 -
+              y1; // Center vertically on screen (slightly above center)
+      d_.setTextColor(GxEPD_WHITE);
+      d_.setCursor(textX, textY);
+      d_.print(prayerTime);
+    }
+
+    // Draw iqama delay centered below prayer time on screen
+    d_.setFont(&Cairo_Bold24pt7b);
+    d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
+    textX = (W_ / 2) - (w / 2) - x1; // Center horizontally on screen
+    textY = (H_ / 2) + 20 -
+            y1; // Center vertically on screen (slightly below center)
+    d_.setTextColor(GxEPD_WHITE);
+    d_.setCursor(textX, textY);
+    d_.print(iqamaDelayStr);
   } while (d_.nextPage());
 }
 
@@ -479,7 +580,8 @@ void ScreenUI::redrawHeaderRegion(const ScreenLayout &L, const char *mosqueName,
   uint16_t w, h;
   d_.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
   const int16_t centerX = W_ / 2;
-  const int16_t topY = L.countdownY - 50;
+  const int16_t topY =
+      L.countdownY - 40; // 40px space above countdown box - 10px closer
   const int16_t textX = centerX - w / 2 - x1;
   const int16_t textY = topY - y1;
 

@@ -75,7 +75,8 @@ private:
                            int count, int16_t startY, int16_t boxW,
                            int16_t boxH, int16_t spacing, int highlightIndex);
 
-  void redrawCountdownRegion(const ScreenLayout &L, const char *countdownStr);
+  void redrawCountdownRegion(const ScreenLayout &L, const char *countdownStr,
+                             const char *prayerTime, const char *iqamaTime);
   void redrawPrayerRowRegion(const ScreenLayout &L, const char *names[5],
                              const char *times[5],
                              const char *iqamaTimes[5], // NEW PARAMETER
