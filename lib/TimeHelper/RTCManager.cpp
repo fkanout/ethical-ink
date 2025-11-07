@@ -115,12 +115,8 @@ bool RTCManager::syncTimeFromNTPWithOffset(int maxRetries, uint32_t timeoutMs) {
       if (deserializeJson(doc, response) == DeserializationError::Ok &&
           doc["success"]) {
         offsetSeconds = doc["timezone"]["offset"] | 0;
-        // TEMP: Add 1 hour (3600 seconds) to the offset
-        offsetSeconds += 3600;
         gotOffset = true;
-        Serial.printf(
-            "✅ Timezone offset: %d seconds (with +1 hour adjustment)\n",
-            offsetSeconds);
+        Serial.printf("✅ Timezone offset: %d seconds\n", offsetSeconds);
         break;
       } else {
         Serial.println("❌ Failed to parse ipwho.is response");
