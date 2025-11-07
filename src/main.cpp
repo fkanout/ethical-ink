@@ -32,7 +32,8 @@ GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT>
 struct RenderState {
   bool initialized;
   int lastHighlight;
-  char times[5][6]; // Fajr..Isha بصيغة "HH:MM"
+  char times[5][6];       // Fajr..Isha بصيغة "HH:MM"
+  char nextPrayerTime[6]; // HH:MM format for calculating countdown in sleep
 };
 // RTC slow memory state (optional)
 RTC_DATA_ATTR RenderState g_renderState;
@@ -262,7 +263,7 @@ void executeMainTask() {
   Serial.printf("  ⏰ %s  %s\n", ISHA.c_str(), IQAMA_Isha.c_str());
   Serial.printf("  ⏳%s in %02d:%02d\n", nextPrayerInfo.name.c_str(),
                 countdown.hours, countdown.minutes);
-  Serial.println("✨══════•••••••••••••••••••••••••••••••••••══════✨");
+  Serial.println("✨══════•••••••••••••••••••••••••••••••••══════✨");
 
   // ---------- E-paper display with status bar ----------
   const char *PRAYER_NAMES_ROW[5] = {"Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"};
@@ -336,6 +337,9 @@ void executeMainTask() {
     snprintf(g_renderState.times[i], sizeof g_renderState.times[i], "%s",
              prayerTimesRow[i]);
   }
+  // Store next prayer time for countdown calculation in sleep handler
+  snprintf(g_renderState.nextPrayerTime, sizeof g_renderState.nextPrayerTime,
+           "%s", nextPrayerInfo.time.c_str());
 }
 
 //-------------------------end main execute-------------------------------------
@@ -672,6 +676,7 @@ void handleSleeping() {
 void handleMainTaskState() {
   Serial.println("⚙️ Running main task...");
   executeMainTask();
+
   state = RUNNING_PERIODIC_TASKS;
 }
 

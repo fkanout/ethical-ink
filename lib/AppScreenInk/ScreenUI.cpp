@@ -137,7 +137,7 @@ void ScreenUI::fullRenderWithStatusBar(
 
     // Draw prayer time centered vertically on screen
     if (currentPrayerTime) {
-      d_.setFont(&Cairo_Bold24pt7b);
+      d_.setFont(&Cairo_Bold40pt7b);
       d_.getTextBounds(currentPrayerTime, 0, 0, &x1_count, &y1_count, &w_count,
                        &h_count);
       textX_count =
@@ -151,14 +151,14 @@ void ScreenUI::fullRenderWithStatusBar(
     }
 
     // Draw iqama delay centered below prayer time on screen
-    d_.setFont(&Cairo_Bold24pt7b);
+    d_.setFont(&Cairo_Bold18pt7b);
     d_.getTextBounds(iqamaDelayStr, 0, 0, &x1_count, &y1_count, &w_count,
                      &h_count);
     textX_count =
         (W_ / 2) - (w_count / 2) - x1_count; // Center horizontally on screen
     textY_count =
-        (H_ / 2) + 20 -
-        y1_count; // Center vertically on screen (slightly below center)
+        (H_ / 2) + 40 - y1_count; // Center vertically on screen (pushed down
+                                  // 20px more from original)
     d_.setTextColor(GxEPD_WHITE);
     d_.setCursor(textX_count, textY_count);
     d_.print(iqamaDelayStr);
@@ -511,7 +511,7 @@ void ScreenUI::redrawCountdownRegion(const ScreenLayout &L,
 
     // Draw prayer time centered vertically on screen
     if (prayerTime) {
-      d_.setFont(&Cairo_Bold24pt7b);
+      d_.setFont(&Cairo_Bold40pt7b);
       d_.getTextBounds(prayerTime, 0, 0, &x1, &y1, &w, &h);
       textX = (W_ / 2) - (w / 2) - x1; // Center horizontally on screen
       textY = (H_ / 2) - 20 -
@@ -522,11 +522,12 @@ void ScreenUI::redrawCountdownRegion(const ScreenLayout &L,
     }
 
     // Draw iqama delay centered below prayer time on screen
-    d_.setFont(&Cairo_Bold24pt7b);
+    d_.setFont(&Cairo_Bold18pt7b);
     d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
     textX = (W_ / 2) - (w / 2) - x1; // Center horizontally on screen
-    textY = (H_ / 2) + 20 -
-            y1; // Center vertically on screen (slightly below center)
+    textY =
+        (H_ / 2) + 40 -
+        y1; // Center vertically on screen (pushed down 20px more from original)
     d_.setTextColor(GxEPD_WHITE);
     d_.setCursor(textX, textY);
     d_.print(iqamaDelayStr);
