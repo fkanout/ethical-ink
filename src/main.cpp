@@ -476,7 +476,9 @@ void handleConnectingWifiWithSavedCredentials() {
   });
   wifi.onWifiFailedToConnectCallback([]() {
     Serial.println("❌ Failed to connect to Wi-Fi");
-    state = ADVERTISING_BLE;
+    Serial.println("🔄 Restarting device...");
+    delay(1000);
+    ESP.restart();
   });
 }
 
@@ -612,7 +614,9 @@ void handleConnectingWifi() {
 
   wifi.onWifiFailedToConnectCallback([]() {
     Serial.println("❌ Failed to connect to Wi-Fi");
-    state = ADVERTISING_BLE;
+    Serial.println("🔄 Restarting device...");
+    delay(1000);
+    ESP.restart();
   });
 }
 
@@ -721,12 +725,14 @@ void handlePeriodicTasks() {
   //   return;
   // }
   // Serial.println("⚠️ User events do not need to be fetched.");
-  if (shouldFetchBasedOnInterval(rtcData.mosqueLastUpdateMillis,
-                                 mosqueUpdateInterval, "MOSQUE_DATA")) {
-    fetchPrayerTimesIfDue();
-    return;
-  }
-  Serial.println("⚠️ Mosque data does not need to be fetched.");
+
+  // Commented out: mosque data update every 6 hours
+  // if (shouldFetchBasedOnInterval(rtcData.mosqueLastUpdateMillis,
+  //                                mosqueUpdateInterval, "MOSQUE_DATA")) {
+  //   fetchPrayerTimesIfDue();
+  //   return;
+  // }
+  // Serial.println("⚠️ Mosque data does not need to be fetched.");
 
   state = SLEEPING;
 }

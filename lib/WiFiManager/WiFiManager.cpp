@@ -143,6 +143,9 @@ void WiFiManager::connectTask(void *parameter) {
       WiFiManager::getInstance().onWifiFailedToConnect();
     }
     WiFi.disconnect();
+    Serial.println("🔄 Restarting device...");
+    delay(1000);
+    ESP.restart();
   }
 
   // Clean up
