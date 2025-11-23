@@ -39,7 +39,14 @@ struct RTCData {
   int month = 0;
 
   char mosqueUUID[40] =
-      ""; // Store mosque UUID (36 chars + null terminator + padding)
+      ""; // Store mosque UUID (36 chars + null terminator + padding) - DEPRECATED, use lat/lon
+  
+  // NEW: Location-based prayer times configuration
+  float latitude = 0.0;  // Location latitude for prayer times calculation
+  float longitude = 0.0; // Location longitude for prayer times calculation
+  int calculationMethod = 4; // Calculation method (4 = Umm Al-Qura, Makkah)
+  char cityName[50] = ""; // City name from Aladhan API
+  
   int timezoneOffsetSeconds = 0; // Timezone offset in seconds (e.g., 3600 for UTC+1)
   int wifiRetryCount = 0; // Track WiFi connection failures
   int bootCount = 0;      // Track rapid reboots for factory reset detection

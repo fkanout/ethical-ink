@@ -150,18 +150,20 @@ void ScreenUI::fullRenderWithStatusBar(
       d_.print(currentPrayerTime);
     }
 
-    // Draw iqama delay centered below prayer time on screen
-    d_.setFont(&Cairo_Bold18pt7b);
-    d_.getTextBounds(iqamaDelayStr, 0, 0, &x1_count, &y1_count, &w_count,
-                     &h_count);
-    textX_count =
-        (W_ / 2) - (w_count / 2) - x1_count; // Center horizontally on screen
-    textY_count =
-        (H_ / 2) + 40 - y1_count; // Center vertically on screen (pushed down
-                                  // 20px more from original)
-    d_.setTextColor(GxEPD_WHITE);
-    d_.setCursor(textX_count, textY_count);
-    d_.print(iqamaDelayStr);
+    // Draw iqama delay only if there's an actual delay (not 0)
+    if (delay > 0) {
+      d_.setFont(&Cairo_Bold18pt7b);
+      d_.getTextBounds(iqamaDelayStr, 0, 0, &x1_count, &y1_count, &w_count,
+                       &h_count);
+      textX_count =
+          (W_ / 2) - (w_count / 2) - x1_count; // Center horizontally on screen
+      textY_count =
+          (H_ / 2) + 40 - y1_count; // Center vertically on screen (pushed down
+                                    // 20px more from original)
+      d_.setTextColor(GxEPD_WHITE);
+      d_.setCursor(textX_count, textY_count);
+      d_.print(iqamaDelayStr);
+    }
 
     // Prayer time boxes row with iqama times - custom drawing for reversed
     // colors
@@ -214,14 +216,16 @@ void ScreenUI::fullRenderWithStatusBar(
         d_.setCursor(timeX, timeY);
         d_.print(prayerTimes[i]);
 
-        // Iqama Delay
-        d_.setFont(&Cairo_Bold24pt7b);
-        d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
-        int16_t iqamaX = x + (L.prayerBoxW - w) / 2 - x1;
-        int16_t iqamaY = L.rowY + L.prayerBoxH - 10;
-        d_.setTextColor(GxEPD_BLACK);
-        d_.setCursor(iqamaX, iqamaY);
-        d_.print(iqamaDelayStr);
+        // Iqama Delay (only show if delay > 0)
+        if (delay > 0) {
+          d_.setFont(&Cairo_Bold24pt7b);
+          d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
+          int16_t iqamaX = x + (L.prayerBoxW - w) / 2 - x1;
+          int16_t iqamaY = L.rowY + L.prayerBoxH - 10;
+          d_.setTextColor(GxEPD_BLACK);
+          d_.setCursor(iqamaX, iqamaY);
+          d_.print(iqamaDelayStr);
+        }
       } else {
         // Not highlighted: white border, white text
         d_.drawRect(x, L.rowY, L.prayerBoxW, L.prayerBoxH, GxEPD_WHITE);
@@ -246,14 +250,16 @@ void ScreenUI::fullRenderWithStatusBar(
         d_.setCursor(timeX, timeY);
         d_.print(prayerTimes[i]);
 
-        // Iqama Delay
-        d_.setFont(&Cairo_Bold24pt7b);
-        d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
-        int16_t iqamaX = x + (L.prayerBoxW - w) / 2 - x1;
-        int16_t iqamaY = L.rowY + L.prayerBoxH - 10;
-        d_.setTextColor(GxEPD_WHITE);
-        d_.setCursor(iqamaX, iqamaY);
-        d_.print(iqamaDelayStr);
+        // Iqama Delay (only show if delay > 0)
+        if (delay > 0) {
+          d_.setFont(&Cairo_Bold24pt7b);
+          d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
+          int16_t iqamaX = x + (L.prayerBoxW - w) / 2 - x1;
+          int16_t iqamaY = L.rowY + L.prayerBoxH - 10;
+          d_.setTextColor(GxEPD_WHITE);
+          d_.setCursor(iqamaX, iqamaY);
+          d_.print(iqamaDelayStr);
+        }
       }
     }
   } while (d_.nextPage());
@@ -423,14 +429,16 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
       d_.setCursor(timeX, timeY);
       d_.print(times[i]);
 
-      // Iqama delay (third section)
-      d_.setFont(&Cairo_Bold24pt7b);
-      d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
-      int16_t iqamaX = x + (boxW - w) / 2 - x1;
-      int16_t iqamaY = section3 - 15;
-      d_.setTextColor(GxEPD_BLACK); // Black text on white background
-      d_.setCursor(iqamaX, iqamaY);
-      d_.print(iqamaDelayStr);
+      // Iqama delay (third section) - only show if delay > 0
+      if (delay > 0) {
+        d_.setFont(&Cairo_Bold24pt7b);
+        d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
+        int16_t iqamaX = x + (boxW - w) / 2 - x1;
+        int16_t iqamaY = section3 - 15;
+        d_.setTextColor(GxEPD_BLACK); // Black text on white background
+        d_.setCursor(iqamaX, iqamaY);
+        d_.print(iqamaDelayStr);
+      }
     } else {
       d_.drawRect(x, startY, boxW, boxH, GxEPD_WHITE); // White border
 
@@ -454,14 +462,16 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
       d_.setCursor(timeX, timeY);
       d_.print(times[i]);
 
-      // Iqama delay (third section)
-      d_.setFont(&Cairo_Bold24pt7b);
-      d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
-      int16_t iqamaX = x + (boxW - w) / 2 - x1;
-      int16_t iqamaY = section3 - 15;
-      d_.setTextColor(GxEPD_WHITE); // White text on black background
-      d_.setCursor(iqamaX, iqamaY);
-      d_.print(iqamaDelayStr);
+      // Iqama delay (third section) - only show if delay > 0
+      if (delay > 0) {
+        d_.setFont(&Cairo_Bold24pt7b);
+        d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
+        int16_t iqamaX = x + (boxW - w) / 2 - x1;
+        int16_t iqamaY = section3 - 15;
+        d_.setTextColor(GxEPD_WHITE); // White text on black background
+        d_.setCursor(iqamaX, iqamaY);
+        d_.print(iqamaDelayStr);
+      }
     }
   }
 }
@@ -521,16 +531,18 @@ void ScreenUI::redrawCountdownRegion(const ScreenLayout &L,
       d_.print(prayerTime);
     }
 
-    // Draw iqama delay centered below prayer time on screen
-    d_.setFont(&Cairo_Bold18pt7b);
-    d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
-    textX = (W_ / 2) - (w / 2) - x1; // Center horizontally on screen
-    textY =
-        (H_ / 2) + 40 -
-        y1; // Center vertically on screen (pushed down 20px more from original)
-    d_.setTextColor(GxEPD_WHITE);
-    d_.setCursor(textX, textY);
-    d_.print(iqamaDelayStr);
+    // Draw iqama delay only if there's an actual delay (not 0)
+    if (delay > 0) {
+      d_.setFont(&Cairo_Bold18pt7b);
+      d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
+      textX = (W_ / 2) - (w / 2) - x1; // Center horizontally on screen
+      textY =
+          (H_ / 2) + 40 -
+          y1; // Center vertically on screen (pushed down 20px more from original)
+      d_.setTextColor(GxEPD_WHITE);
+      d_.setCursor(textX, textY);
+      d_.print(iqamaDelayStr);
+    }
   } while (d_.nextPage());
 }
 

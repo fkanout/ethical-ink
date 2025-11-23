@@ -14,7 +14,9 @@
 #include <Fonts/FreeMonoBold24pt7b.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <GxEPD2_BW.h>
-#include <MAWAQITManager.h>
+// MAWAQIT API - Commented out, replaced with alternative API
+// #include <MAWAQITManager.h>
+#include <AladhanManager.h>
 #include <RTCManager.h>
 #include <SPI.h>
 
@@ -52,14 +54,17 @@ bool isFetching = false;
 
 AppState state = BOOTING;
 AppState lastState = FETAL_ERROR;
-String mosqueName = "Mosque Name"; // Default fallback name
 // Add this global variable to track BLE advertising state
 bool g_bleAdvertising = false;
 // Global variables to store BLE-received credentials
 String g_receivedSSID = "";
 String g_receivedPassword = "";
-String g_receivedMosqueUUID = "";
+String g_receivedMosqueUUID = ""; // Legacy, kept for backward compatibility
 int g_receivedTimezoneOffset = 0;
+// NEW: Location-based prayer times configuration
+float g_receivedLatitude = 0.0;
+float g_receivedLongitude = 0.0;
+int g_receivedCalculationMethod = 4; // Default: Umm Al-Qura (Makkah)
 // WiFi connection retry counter
 int g_wifiRetryCount = 0;
 const int MAX_WIFI_RETRIES = 3; // After 3 failed attempts, fall back to BLE
@@ -154,21 +159,13 @@ void executeMainTask() {
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
   unsigned long startTime = millis();
 
-  // Load mosque name from saved info file if available
-  if (SPIFFS.exists("/mosque_info.json")) {
-    File file = SPIFFS.open("/mosque_info.json", FILE_READ);
-    if (file) {
-      String json = file.readString();
-      file.close();
-
-      JsonDocument doc;
-      DeserializationError error = deserializeJson(doc, json);
-      if (!error && doc["name"].is<String>()) {
-        mosqueName = doc["name"].as<String>();
-        Serial.printf("📖 Loaded mosque name: %s\n", mosqueName.c_str());
-      }
-    }
+  // Use city name from RTC memory instead of mosque name
+  String displayLocationName = String(rtcData.cityName);
+  if (displayLocationName.isEmpty()) {
+    // Fallback to coordinates if no city name
+    displayLocationName = String(rtcData.latitude, 2) + "°, " + String(rtcData.longitude, 2) + "°";
   }
+  Serial.printf("📍 Location: %s\n", displayLocationName.c_str());
 
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
@@ -292,47 +289,50 @@ void executeMainTask() {
   // Get status information
   StatusInfo statusInfo = StatusBar::getStatusInfo(g_bleAdvertising);
 
-  // Use the fetched mosque name, fallback to static name if it contains mostly
-  // non-ASCII (Arabic) characters
-  String displayName = mosqueName;
+  // Use city name instead of mosque name
+  String displayName = displayLocationName;
 
-  // Count displayable vs non-displayable characters
-  int asciiCount = 0;
+  // Count displayable characters (Latin script + numbers + punctuation)
+  int displayableCount = 0;
   int totalCount = displayName.length();
 
   for (int i = 0; i < totalCount; i++) {
     unsigned char c = displayName[i];
-    // Check if character is ASCII letter or number
-    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-        (c >= '0' && c <= '9')) {
-      asciiCount++;
+    // Accept: A-Z, a-z, 0-9, space, comma, period, dash, apostrophe, 
+    // extended ASCII (128-255) for accented letters (é, ñ, etc.)
+    // and degree symbol (176/°)
+    if ((c >= 32 && c <= 126) ||  // Standard ASCII printable
+        (c >= 128 && c <= 255)) {  // Extended ASCII (accented letters)
+      displayableCount++;
     }
   }
 
-  // If less than 20% of characters are ASCII letters/numbers, use fallback
-  if (totalCount == 0 || asciiCount < (totalCount * 0.2)) {
-    displayName = "HAMA City - Syria";
-    Serial.println("📝 Using fallback mosque name (Arabic not displayable)");
+  // If less than 50% of characters are displayable, it's likely non-Latin script
+  if (totalCount == 0 || displayableCount < (totalCount * 0.5)) {
+    displayName = String(rtcData.latitude, 2) + "°, " + String(rtcData.longitude, 2) + "°";
+    Serial.println("📝 Using coordinates as location name (non-Latin script not displayable)");
+  } else {
+    Serial.printf("📝 Using location name: %s\n", displayName.c_str());
   }
 
-  const char *MOSQUE_NAME = displayName.c_str();
+  const char *LOCATION_NAME = displayName.c_str();
 
   if (!g_renderState.initialized) {
     // First time: Full render
-    ui.fullRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW,
+    ui.fullRenderWithStatusBar(L, LOCATION_NAME, countdownStr, PRAYER_NAMES_ROW,
                                prayerTimesRow, iqamaTimesRow, highlightIndex,
                                statusInfo);
   } else if (g_renderState.lastHighlight != highlightIndex) {
     // Prayer changed: Do full refresh
     Serial.println("🔄 Prayer changed - doing full refresh");
-    ui.fullRenderWithStatusBar(L, MOSQUE_NAME, countdownStr, PRAYER_NAMES_ROW,
+    ui.fullRenderWithStatusBar(L, LOCATION_NAME, countdownStr, PRAYER_NAMES_ROW,
                                prayerTimesRow, iqamaTimesRow, highlightIndex,
                                statusInfo);
   } else {
     // Same prayer: Only update countdown and status bar (minimal partial
     // refresh)
     Serial.println("⏱️ Same prayer - only updating countdown");
-    ui.partialRenderWithStatusBar(L, MOSQUE_NAME, countdownStr,
+    ui.partialRenderWithStatusBar(L, LOCATION_NAME, countdownStr,
                                   PRAYER_NAMES_ROW, prayerTimesRow,
                                   iqamaTimesRow, highlightIndex, statusInfo);
   }
@@ -351,6 +351,12 @@ void executeMainTask() {
 
 //-------------------------end main execute-------------------------------------
 
+// ============================================================================
+// MAWAQIT API FUNCTIONS - COMMENTED OUT
+// Replaced with alternative prayer times API
+// ============================================================================
+
+/*
 // Helper function to get mosque UUID from config file
 String getMosqueUUID() {
   String configJson = readJsonFile("/mosque_config.json");
@@ -435,6 +441,97 @@ void fetchPrayerTimesIfDue() {
         });
   });
 }
+*/
+
+// ============================================================================
+// NEW PRAYER TIMES API - Aladhan Implementation
+// ============================================================================
+
+void fetchPrayerTimesFromAladhan() {
+  Serial.println("📡 Fetching prayer times from Aladhan API...");
+
+  // Check if location is configured
+  if (rtcData.latitude == 0.0 && rtcData.longitude == 0.0) {
+    Serial.println("⚠️ No location configured. Please configure via BLE first.");
+    state = SLEEPING;
+    return;
+  }
+
+  Serial.printf("📍 Location: %.6f, %.6f (Method: %d)\n", 
+                rtcData.latitude, rtcData.longitude, rtcData.calculationMethod);
+
+  WiFiManager::getInstance().asyncConnectWithSavedCredentials();
+
+  WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
+    Serial.println("❌ Failed to connect to Wi-Fi to fetch prayer times");
+    state = SLEEPING;
+  });
+
+  WiFiManager::getInstance().onWifiConnectedCallback([]() {
+    Serial.println("✅ Connected to Wi-Fi for Aladhan fetch.");
+
+    // Get current date for fetching
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+      Serial.println("❌ Failed to get time for prayer times fetch");
+      state = SLEEPING;
+      return;
+    }
+
+    int currentMonth = timeinfo.tm_mon + 1;
+    int currentYear = timeinfo.tm_year + 1900;
+
+    Serial.printf("📅 Fetching prayer times for %d/%d\n", currentMonth, currentYear);
+
+    // Fetch current month
+    AladhanManager::getInstance().asyncFetchMonthlyPrayerTimes(
+        rtcData.latitude, rtcData.longitude, rtcData.calculationMethod,
+        currentMonth, currentYear,
+        [currentMonth, currentYear](bool success, const char *path) {
+          if (success) {
+            Serial.printf("✅ Prayer times for %d/%d fetched successfully\n",
+                          currentMonth, currentYear);
+            
+            // Files are already split and saved by AladhanManager
+            // No need to call splitCalendarJson
+            
+            // Update last fetch time
+            rtcData.mosqueLastUpdateMillis =
+                RTCManager::getInstance().getEpochTime();
+            AppStateManager::save();
+
+            // Fetch next month if we're in the last week
+            struct tm timeinfo;
+            if (getLocalTime(&timeinfo) && timeinfo.tm_mday >= 24) {
+              int nextMonth = currentMonth + 1;
+              int nextYear = currentYear;
+              if (nextMonth > 12) {
+                nextMonth = 1;
+                nextYear++;
+              }
+
+              Serial.printf("📅 Also fetching next month: %d/%d\n", nextMonth, nextYear);
+              
+              AladhanManager::getInstance().asyncFetchMonthlyPrayerTimes(
+                  rtcData.latitude, rtcData.longitude, rtcData.calculationMethod,
+                  nextMonth, nextYear,
+                  [nextMonth, nextYear](bool success, const char *path) {
+                    if (success) {
+                      Serial.printf("✅ Prayer times for %d/%d saved\n",
+                                    nextMonth, nextYear);
+                    }
+                    state = SLEEPING;
+                  });
+            } else {
+              state = SLEEPING;
+            }
+          } else {
+            Serial.println("⚠️ Failed to fetch prayer times from Aladhan");
+            state = SLEEPING;
+          }
+        });
+  });
+}
 
 void setup() {
   Serial.begin(115200);
@@ -500,13 +597,17 @@ void handleBooting() {
     if (stillPressed) {
       Serial.println(
           "🔄 Factory reset triggered (button held for 10 seconds)!");
-      Serial.println("🗑️ Clearing saved WiFi credentials, mosque UUID, and timezone...");
+      Serial.println("🗑️ Clearing all saved configuration...");
 
       // Clear saved data
       rtcData.wifiRetryCount = 0;
       rtcData.bootCount = 0;
       rtcData.mosqueUUID[0] = '\0';
       rtcData.timezoneOffsetSeconds = 0;
+      rtcData.latitude = 0.0;
+      rtcData.longitude = 0.0;
+      rtcData.calculationMethod = 4;
+      rtcData.cityName[0] = '\0';
       AppStateManager::save();
 
       // Delete SPIFFS files
@@ -514,6 +615,8 @@ void handleBooting() {
         SPIFFS.remove("/wifi.json");
       if (SPIFFS.exists("/mosque_config.json"))
         SPIFFS.remove("/mosque_config.json");
+      if (SPIFFS.exists("/prayer_config.json"))
+        SPIFFS.remove("/prayer_config.json");
 
       Serial.println("✅ Factory reset complete. Starting BLE setup...");
       state = ADVERTISING_BLE;
@@ -654,6 +757,8 @@ void handleWaitingForWifiScan() {
 
       String ssid = doc["ssid"].as<String>();
       String password = doc["password"].as<String>();
+      
+      // Legacy: mosque UUID (kept for backward compatibility but not used)
       String mosqueUuid = doc["mosque_uuid"].as<String>();
       
       if (ssid.isEmpty() || password.isEmpty()) {
@@ -662,10 +767,10 @@ void handleWaitingForWifiScan() {
         return;
       }
 
+      // Validate timezone offset
       if (!doc.containsKey("timezone_offset")) {
         Serial.println("⚠️ Timezone offset is required but not provided.");
         
-        // Display error message on screen
         GxEPD2Adapter<decltype(display)> epdAdapter(display);
         ScreenUI ui(epdAdapter, 800, 480);
         ui.showInitializationScreenWithError("⚠️ Timezone offset is required but not provided.");
@@ -674,18 +779,50 @@ void handleWaitingForWifiScan() {
         return;
       }
 
+      // Validate location (latitude and longitude)
+      if (!doc.containsKey("latitude") || !doc.containsKey("longitude")) {
+        Serial.println("⚠️ Location (latitude/longitude) is required but not provided.");
+        
+        GxEPD2Adapter<decltype(display)> epdAdapter(display);
+        ScreenUI ui(epdAdapter, 800, 480);
+        ui.showInitializationScreenWithError("⚠️ Location coordinates are required.");
+        
+        state = ADVERTISING_BLE;
+        return;
+      }
+
       int timezoneOffset = doc["timezone_offset"] | 0;
+      float latitude = doc["latitude"] | 0.0;
+      float longitude = doc["longitude"] | 0.0;
+      int calculationMethod = doc["calculation_method"] | 4; // Default: Umm Al-Qura (Makkah)
+
+      // Basic validation
+      if (latitude < -90.0 || latitude > 90.0 || longitude < -180.0 || longitude > 180.0) {
+        Serial.println("⚠️ Invalid location coordinates.");
+        
+        GxEPD2Adapter<decltype(display)> epdAdapter(display);
+        ScreenUI ui(epdAdapter, 800, 480);
+        ui.showInitializationScreenWithError("⚠️ Invalid location coordinates.");
+        
+        state = ADVERTISING_BLE;
+        return;
+      }
 
       // Store credentials in global variables (defer write operations to avoid
       // stack overflow)
       g_receivedSSID = ssid;
       g_receivedPassword = password;
-      g_receivedMosqueUUID = mosqueUuid;
+      g_receivedMosqueUUID = mosqueUuid; // Kept for backward compatibility
       g_receivedTimezoneOffset = timezoneOffset;
+      g_receivedLatitude = latitude;
+      g_receivedLongitude = longitude;
+      g_receivedCalculationMethod = calculationMethod;
 
-      Serial.printf("✅ Received WiFi: %s, Mosque UUID: %s, Timezone: UTC%+d\n", ssid.c_str(),
-                    mosqueUuid.isEmpty() ? "not provided" : mosqueUuid.c_str(),
-                    timezoneOffset / 3600);
+      Serial.printf("✅ Received Configuration:\n");
+      Serial.printf("   WiFi: %s\n", ssid.c_str());
+      Serial.printf("   Location: %.6f, %.6f\n", latitude, longitude);
+      Serial.printf("   Timezone: UTC%+d\n", timezoneOffset / 3600);
+      Serial.printf("   Calculation Method: %d\n", calculationMethod);
 
       // Transition to connecting state
       state = CONNECTING_WIFI;
@@ -708,35 +845,67 @@ void handleConnectingWifi() {
   wifi.onWifiConnectedCallback([]() {
     Serial.println("✅ Wi-Fi connected");
 
-    // Now it's safe to write to SPIFFS and RTC (we're in the main loop context
-    // after connection)
-    if (!g_receivedMosqueUUID.isEmpty()) {
-      // Save to RTC memory (primary storage)
-      strncpy(rtcData.mosqueUUID, g_receivedMosqueUUID.c_str(),
-              sizeof(rtcData.mosqueUUID) - 1);
-      rtcData.mosqueUUID[sizeof(rtcData.mosqueUUID) - 1] =
-          '\0'; // Ensure null termination
-      Serial.printf("💾 Mosque UUID saved to RTC: %s\n", rtcData.mosqueUUID);
+    // First, get city name from coordinates using reverse geocoding
+    Serial.println("🌍 Getting location name...");
+    
+    AladhanManager::getInstance().asyncReverseGeocode(
+        g_receivedLatitude, g_receivedLongitude,
+        [](bool success, const String &cityName) {
+          // Save location data to RTC memory
+          rtcData.latitude = g_receivedLatitude;
+          rtcData.longitude = g_receivedLongitude;
+          rtcData.calculationMethod = g_receivedCalculationMethod;
+          
+          // Save city name to RTC memory
+          if (success && !cityName.isEmpty()) {
+            strncpy(rtcData.cityName, cityName.c_str(), 
+                    sizeof(rtcData.cityName) - 1);
+            rtcData.cityName[sizeof(rtcData.cityName) - 1] = '\0';
+            Serial.printf("💾 Location saved: %.6f, %.6f - %s (Method: %d)\n", 
+                          rtcData.latitude, rtcData.longitude, rtcData.cityName, 
+                          rtcData.calculationMethod);
+          } else {
+            rtcData.cityName[0] = '\0'; // Clear city name
+            Serial.printf("💾 Location saved: %.6f, %.6f (Method: %d)\n", 
+                          rtcData.latitude, rtcData.longitude, rtcData.calculationMethod);
+            Serial.println("⚠️ Failed to get city name, will use coordinates");
+          }
 
-      // Also save to SPIFFS for backup
-      String mosqueConfigJson =
-          "{\"mosque_uuid\":\"" + g_receivedMosqueUUID + "\"}";
-      writeJsonFile("/mosque_config.json", mosqueConfigJson);
-      Serial.printf("💾 Mosque UUID saved to SPIFFS: %s\n",
-                    g_receivedMosqueUUID.c_str());
-    }
+          // Save timezone offset to RTC memory
+          rtcData.timezoneOffsetSeconds = g_receivedTimezoneOffset;
+          int hours = g_receivedTimezoneOffset / 3600;
+          int minutes = (abs(g_receivedTimezoneOffset) % 3600) / 60;
+          Serial.printf("💾 Timezone offset saved: UTC%+d:%02d (%d seconds)\n", 
+                        hours, minutes, g_receivedTimezoneOffset);
 
-    // Save timezone offset to RTC memory
-    rtcData.timezoneOffsetSeconds = g_receivedTimezoneOffset;
-    AppStateManager::save();
-    int hours = g_receivedTimezoneOffset / 3600;
-    int minutes = (abs(g_receivedTimezoneOffset) % 3600) / 60;
-    Serial.printf("💾 Timezone offset saved: UTC%+d:%02d (%d seconds)\n", 
-                  hours, minutes, g_receivedTimezoneOffset);
+          // Legacy: Save mosque UUID if provided (for backward compatibility)
+          if (!g_receivedMosqueUUID.isEmpty()) {
+            strncpy(rtcData.mosqueUUID, g_receivedMosqueUUID.c_str(),
+                    sizeof(rtcData.mosqueUUID) - 1);
+            rtcData.mosqueUUID[sizeof(rtcData.mosqueUUID) - 1] = '\0';
+            Serial.printf("💾 Legacy mosque UUID saved: %s\n", rtcData.mosqueUUID);
+          }
 
-    BLEManager::getInstance().stopAdvertising();
-    g_bleAdvertising = false; // Clear BLE advertising flag
-    state = SYNCING_TIME;
+          // Persist to RTC memory
+          AppStateManager::save();
+
+          // Also save to SPIFFS for backup
+          String configJson = "{";
+          configJson += "\"latitude\":" + String(rtcData.latitude, 6) + ",";
+          configJson += "\"longitude\":" + String(rtcData.longitude, 6) + ",";
+          configJson += "\"calculation_method\":" + String(rtcData.calculationMethod) + ",";
+          configJson += "\"timezone_offset\":" + String(rtcData.timezoneOffsetSeconds);
+          if (rtcData.cityName[0] != '\0') {
+            configJson += ",\"city_name\":\"" + String(rtcData.cityName) + "\"";
+          }
+          configJson += "}";
+          writeJsonFile("/prayer_config.json", configJson);
+          Serial.println("💾 Configuration saved to SPIFFS");
+
+          BLEManager::getInstance().stopAdvertising();
+          g_bleAdvertising = false; // Clear BLE advertising flag
+          state = SYNCING_TIME;
+        });
   });
 
   wifi.onWifiFailedToConnectCallback([]() {
@@ -854,20 +1023,21 @@ void fetchUserEvents() {
 
 void handlePeriodicTasks() {
   Serial.println("🔄 Running periodic tasks...");
+  
+  // Check if we need to fetch prayer times (every 6 hours)
+  if (shouldFetchBasedOnInterval(rtcData.mosqueLastUpdateMillis,
+                                 mosqueUpdateInterval, "PRAYER_TIMES")) {
+    fetchPrayerTimesFromAladhan();
+    return;
+  }
+  Serial.println("⚠️ Prayer times do not need to be fetched yet.");
+
+  // User events fetching (commented out for now)
   // if (shouldFetchBasedOnInterval(rtcData.userEventsUpdateMillis,
   //                                userEventsUpdateInterval, "USER_EVENTS")) {
-  //  // fetchUserEvents();
+  //   fetchUserEvents();
   //   return;
   // }
-  // Serial.println("⚠️ User events do not need to be fetched.");
-
-  // Commented out: mosque data update every 6 hours
-  // if (shouldFetchBasedOnInterval(rtcData.mosqueLastUpdateMillis,
-  //                                mosqueUpdateInterval, "MOSQUE_DATA")) {
-  //   fetchPrayerTimesIfDue();
-  //   return;
-  // }
-  // Serial.println("⚠️ Mosque data does not need to be fetched.");
 
   state = SLEEPING;
 }
