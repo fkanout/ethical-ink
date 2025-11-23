@@ -56,6 +56,7 @@ public:
                                   const StatusInfo &statusInfo);
 
   void showInitializationScreen();
+  void showInitializationScreenWithError(const char *errorMsg);
 
   static int getNextPrayerIndex(const char *times[5], int currentHour,
                                 int currentMin);

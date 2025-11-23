@@ -24,6 +24,9 @@
 #define EPD_RST 8
 #define EPD_BUSY 7
 
+// Factory reset button (built-in BOOT button on ESP32)
+#define FACTORY_RESET_BUTTON 0 // GPIO0 - BOOT button
+
 // 7.5" b/w (800x480)
 GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT>
     display(GxEPD2_750_T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
@@ -56,6 +59,10 @@ bool g_bleAdvertising = false;
 String g_receivedSSID = "";
 String g_receivedPassword = "";
 String g_receivedMosqueUUID = "";
+int g_receivedTimezoneOffset = 0;
+// WiFi connection retry counter
+int g_wifiRetryCount = 0;
+const int MAX_WIFI_RETRIES = 3; // After 3 failed attempts, fall back to BLE
 
 //--------------------------------------------------------------------------
 bool shouldFetchBasedOnInterval(unsigned long lastUpdateSeconds,
@@ -346,25 +353,23 @@ void executeMainTask() {
 
 // Helper function to get mosque UUID from config file
 String getMosqueUUID() {
-  const char *DEFAULT_UUID = "f9a51508-05b7-4324-a7e8-4acbc2893c02";
-
   String configJson = readJsonFile("/mosque_config.json");
   if (configJson.isEmpty() || configJson == "{}") {
-    Serial.println("⚠️ No mosque config found, using default UUID");
-    return String(DEFAULT_UUID);
+    Serial.println("⚠️ No mosque config found");
+    return String("");
   }
 
   StaticJsonDocument<256> doc;
   DeserializationError error = deserializeJson(doc, configJson);
   if (error) {
-    Serial.println("❌ Failed to parse mosque config, using default UUID");
-    return String(DEFAULT_UUID);
+    Serial.println("❌ Failed to parse mosque config");
+    return String("");
   }
 
   String uuid = doc["mosque_uuid"].as<String>();
   if (uuid.isEmpty()) {
-    Serial.println("⚠️ Empty UUID in config, using default");
-    return String(DEFAULT_UUID);
+    Serial.println("⚠️ Empty UUID in config");
+    return String("");
   }
 
   Serial.printf("✅ Using mosque UUID: %s\n", uuid.c_str());
@@ -434,6 +439,14 @@ void fetchPrayerTimesIfDue() {
 void setup() {
   Serial.begin(115200);
   delay(300);
+
+  // Set up factory reset button early
+  pinMode(FACTORY_RESET_BUTTON, INPUT_PULLUP);
+  Serial.printf("\n\n🔧 Factory reset button configured on GPIO%d\n",
+                FACTORY_RESET_BUTTON);
+  Serial.println("📝 To factory reset: Hold BOOT button, press RST, keep "
+                 "holding BOOT for 10 seconds");
+
   display.init(115200);
   display.setRotation(0);
   display.setFullWindow();
@@ -444,9 +457,70 @@ void handleBooting() {
   if (!SPIFFS.begin(true)) {
     Serial.println("❌ Failed to mount SPIFFS");
     state = FETAL_ERROR;
+    return;
   }
   Serial.println("✅ SPIFFS mounted successfully");
   AppStateManager::load();
+
+  // Factory reset detection: Hold BOOT button for 10 seconds during boot
+  pinMode(FACTORY_RESET_BUTTON, INPUT_PULLUP);
+  delay(100); // Give pin time to stabilize
+
+  int buttonState = digitalRead(FACTORY_RESET_BUTTON);
+  Serial.printf("🔍 Factory reset button (GPIO%d) state: %s\n",
+                FACTORY_RESET_BUTTON,
+                buttonState == LOW ? "PRESSED (LOW)" : "NOT PRESSED (HIGH)");
+
+  // Check if button is pressed (LOW when pressed on most ESP32 boards)
+  if (buttonState == LOW) {
+    Serial.println("🔘 Factory reset button detected - hold for 10 seconds...");
+
+    unsigned long startPress = millis();
+    bool stillPressed = true;
+    int lastSecond = 0;
+
+    // Wait and check if button stays pressed for 10 seconds
+    while (millis() - startPress < 10000) {
+      if (digitalRead(FACTORY_RESET_BUTTON) == HIGH) {
+        stillPressed = false;
+        Serial.println("❌ Button released - factory reset cancelled");
+        break;
+      }
+
+      // Print countdown every second
+      int currentSecond = (millis() - startPress) / 1000;
+      if (currentSecond > lastSecond) {
+        lastSecond = currentSecond;
+        Serial.printf("⏳ Holding... %d/10 seconds\n", currentSecond);
+      }
+
+      delay(100);
+    }
+
+    if (stillPressed) {
+      Serial.println(
+          "🔄 Factory reset triggered (button held for 10 seconds)!");
+      Serial.println("🗑️ Clearing saved WiFi credentials, mosque UUID, and timezone...");
+
+      // Clear saved data
+      rtcData.wifiRetryCount = 0;
+      rtcData.bootCount = 0;
+      rtcData.mosqueUUID[0] = '\0';
+      rtcData.timezoneOffsetSeconds = 0;
+      AppStateManager::save();
+
+      // Delete SPIFFS files
+      if (SPIFFS.exists("/wifi.json"))
+        SPIFFS.remove("/wifi.json");
+      if (SPIFFS.exists("/mosque_config.json"))
+        SPIFFS.remove("/mosque_config.json");
+
+      Serial.println("✅ Factory reset complete. Starting BLE setup...");
+      state = ADVERTISING_BLE;
+      return;
+    }
+  }
+
   state = CHECKING_TIME;
 }
 
@@ -458,34 +532,64 @@ void handleCheckingTime() {
     state = RUNNING_MAIN_TASK;
   } else {
     Serial.println("❌ Time not synced");
-    // state = CONNECTING_WIFI_WITH_SAVED_CREDENTIALS;
-    state = ADVERTISING_BLE; // Use BLE for WiFi setup (comment this to use
-                             // saved credentials)
+    // Try to connect with saved credentials first
+    state = CONNECTING_WIFI_WITH_SAVED_CREDENTIALS;
   }
 }
 
 void handleConnectingWifiWithSavedCredentials() {
-  Serial.println("🔄 Connecting to Wi-Fi...");
+  Serial.println("🔄 Connecting to Wi-Fi with saved credentials...");
   WiFiManager &wifi = WiFiManager::getInstance();
-  wifi.asyncConnectWithSavedCredentials();
+  
+  // Set up callbacks BEFORE calling asyncConnectWithSavedCredentials
   wifi.onWifiConnectedCallback([]() {
     Serial.println("✅ Wi-Fi connected");
     BLEManager::getInstance().stopAdvertising();
     g_bleAdvertising = false; // Clear BLE advertising flag
+    // Reset retry counter on successful connection
+    rtcData.wifiRetryCount = 0;
+    AppStateManager::save();
     state = SYNCING_TIME;
   });
+  
   wifi.onWifiFailedToConnectCallback([]() {
-    Serial.println("❌ Failed to connect to Wi-Fi");
-    Serial.println("🔄 Restarting device...");
-    delay(1000);
-    ESP.restart();
+    Serial.println("❌ Failed to connect to Wi-Fi (callback triggered)");
+
+    // Check if we have any saved credentials at all
+    String wifiJsonString = readJsonFile(WIFI_CRED_FILE);
+    if (wifiJsonString.isEmpty() || wifiJsonString == "{}") {
+      Serial.println("⚠️ No saved WiFi credentials - starting BLE immediately");
+      state = ADVERTISING_BLE;
+      return;
+    }
+
+    // If we have credentials but they failed, use retry logic
+    rtcData.wifiRetryCount++;
+    AppStateManager::save();
+
+    if (rtcData.wifiRetryCount >= MAX_WIFI_RETRIES) {
+      Serial.printf(
+          "⚠️ WiFi failed %d times. Starting BLE for reconfiguration...\n",
+          rtcData.wifiRetryCount);
+      rtcData.wifiRetryCount = 0; // Reset counter
+      AppStateManager::save();
+      state = ADVERTISING_BLE;
+    } else {
+      Serial.printf("🔄 WiFi retry %d/%d. Restarting device...\n",
+                    rtcData.wifiRetryCount, MAX_WIFI_RETRIES);
+      delay(1000);
+      ESP.restart();
+    }
   });
+  
+  // Call after callbacks are set up
+  wifi.asyncConnectWithSavedCredentials();
 }
 
 void handleSyncingTime() {
   Serial.println("🔄 Syncing time...");
   RTCManager &rtc = RTCManager::getInstance();
-  if (rtc.syncTimeFromNTPWithOffset(3, 10000)) {
+  if (rtc.syncTimeFromNTPWithOffset(3, 10000, rtcData.timezoneOffsetSeconds)) {
     Serial.println("✅ Time synced successfully");
     // rtc.setTimeToSpecificHourAndMinute(20, 07, 5, 2); // for testing time
     state = RUNNING_MAIN_TASK;
@@ -551,21 +655,37 @@ void handleWaitingForWifiScan() {
       String ssid = doc["ssid"].as<String>();
       String password = doc["password"].as<String>();
       String mosqueUuid = doc["mosque_uuid"].as<String>();
-
+      
       if (ssid.isEmpty() || password.isEmpty()) {
         Serial.println("⚠️ Incomplete Wi-Fi credentials.");
         state = ADVERTISING_BLE;
         return;
       }
 
+      if (!doc.containsKey("timezone_offset")) {
+        Serial.println("⚠️ Timezone offset is required but not provided.");
+        
+        // Display error message on screen
+        GxEPD2Adapter<decltype(display)> epdAdapter(display);
+        ScreenUI ui(epdAdapter, 800, 480);
+        ui.showInitializationScreenWithError("⚠️ Timezone offset is required but not provided.");
+        
+        state = ADVERTISING_BLE;
+        return;
+      }
+
+      int timezoneOffset = doc["timezone_offset"] | 0;
+
       // Store credentials in global variables (defer write operations to avoid
       // stack overflow)
       g_receivedSSID = ssid;
       g_receivedPassword = password;
       g_receivedMosqueUUID = mosqueUuid;
+      g_receivedTimezoneOffset = timezoneOffset;
 
-      Serial.printf("✅ Received WiFi: %s, Mosque UUID: %s\n", ssid.c_str(),
-                    mosqueUuid.isEmpty() ? "not provided" : mosqueUuid.c_str());
+      Serial.printf("✅ Received WiFi: %s, Mosque UUID: %s, Timezone: UTC%+d\n", ssid.c_str(),
+                    mosqueUuid.isEmpty() ? "not provided" : mosqueUuid.c_str(),
+                    timezoneOffset / 3600);
 
       // Transition to connecting state
       state = CONNECTING_WIFI;
@@ -596,7 +716,6 @@ void handleConnectingWifi() {
               sizeof(rtcData.mosqueUUID) - 1);
       rtcData.mosqueUUID[sizeof(rtcData.mosqueUUID) - 1] =
           '\0'; // Ensure null termination
-      AppStateManager::save();
       Serial.printf("💾 Mosque UUID saved to RTC: %s\n", rtcData.mosqueUUID);
 
       // Also save to SPIFFS for backup
@@ -606,6 +725,14 @@ void handleConnectingWifi() {
       Serial.printf("💾 Mosque UUID saved to SPIFFS: %s\n",
                     g_receivedMosqueUUID.c_str());
     }
+
+    // Save timezone offset to RTC memory
+    rtcData.timezoneOffsetSeconds = g_receivedTimezoneOffset;
+    AppStateManager::save();
+    int hours = g_receivedTimezoneOffset / 3600;
+    int minutes = (abs(g_receivedTimezoneOffset) % 3600) / 60;
+    Serial.printf("💾 Timezone offset saved: UTC%+d:%02d (%d seconds)\n", 
+                  hours, minutes, g_receivedTimezoneOffset);
 
     BLEManager::getInstance().stopAdvertising();
     g_bleAdvertising = false; // Clear BLE advertising flag
@@ -661,6 +788,10 @@ void handleSleeping() {
   Serial.flush();
   delay(20); // give UART time to drain
 
+  // Enable wake-up from BOOT button (GPIO0) in addition to timer
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)FACTORY_RESET_BUTTON,
+                               0); // Wake on LOW (button press)
+
   // Sleep & wake
   esp_sleep_enable_timer_wakeup((uint64_t)sleepDuration * 1000000ULL);
   esp_light_sleep_start();
@@ -669,6 +800,10 @@ void handleSleeping() {
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
   if (cause == ESP_SLEEP_WAKEUP_TIMER) {
     Serial.println("⏰ Woke from light sleep by timer.");
+  } else if (cause == ESP_SLEEP_WAKEUP_EXT0) {
+    Serial.println("🔘 Woke from light sleep by BOOT button!");
+    Serial.println("💡 If you want factory reset: Hold BOOT, press RST, keep "
+                   "holding 10 sec");
   } else {
     Serial.printf("⏰ Woke from light sleep (cause=%d).\n", (int)cause);
   }
@@ -775,6 +910,15 @@ void handleAppState() {
 }
 
 void loop() {
+  // Debug: Monitor BOOT button state (only print when it changes)
+  static int lastButtonState = HIGH;
+  int currentButtonState = digitalRead(FACTORY_RESET_BUTTON);
+  if (currentButtonState != lastButtonState) {
+    lastButtonState = currentButtonState;
+    Serial.printf("🔘 BOOT button (GPIO%d): %s\n", FACTORY_RESET_BUTTON,
+                  currentButtonState == LOW ? "PRESSED ⬇️" : "RELEASED ⬆️");
+  }
+
   if (state != lastState) {
     Serial.printf("🔁 State changed: %d ➡️ %d\n", lastState, state);
     lastState = state;

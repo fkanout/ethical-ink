@@ -49,12 +49,20 @@ void WiFiManager::asyncConnectWithSavedCredentials() {
   if (wifiJsonString.isEmpty() || wifiJsonString == "{}") {
     Serial.println("⚠️ No valid Wi-Fi credentials found - "
                    "asyncConnectWithSavedCredentials");
+    // Trigger failure callback to allow fallback to BLE
+    if (WiFiManager::getInstance().onWifiFailedToConnect) {
+      WiFiManager::getInstance().onWifiFailedToConnect();
+    }
     return;
   }
   DynamicJsonDocument doc(256);
   DeserializationError errorParsingWifi = deserializeJson(doc, wifiJsonString);
   if (errorParsingWifi) {
     Serial.println("❌ JSON parse failed");
+    // Trigger failure callback
+    if (WiFiManager::getInstance().onWifiFailedToConnect) {
+      WiFiManager::getInstance().onWifiFailedToConnect();
+    }
     return;
   } else {
     String ssid = doc["ssid"].as<String>();

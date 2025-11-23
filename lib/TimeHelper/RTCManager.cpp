@@ -82,63 +82,20 @@ void RTCManager::setTimeToSpecificHourAndMinute(int newHour, int newMinute,
   }
 }
 
-bool RTCManager::syncTimeFromNTPWithOffset(int maxRetries, uint32_t timeoutMs) {
+bool RTCManager::syncTimeFromNTPWithOffset(int maxRetries, uint32_t timeoutMs, int timezoneOffsetSeconds) {
   WiFiClientSecure client;
   client.setInsecure();
-  int offsetSeconds = 0;
-  bool gotOffset = false;
 
-  for (int attempt = 1; attempt <= maxRetries; attempt++) {
-    Serial.printf("🌐 Attempt %d to get timezone offset from ipwho.is\n",
-                  attempt);
-
-    if (client.connect("ipwho.is", 443)) {
-      client.print("GET / HTTP/1.1\r\nHost: ipwho.is\r\nUser-Agent: "
-                   "RTCManager/1.0\r\nConnection: close\r\nAccept: "
-                   "application/json\r\n\r\n");
-
-      while (client.connected()) {
-        String line = client.readStringUntil('\n');
-        if (line == "\r")
-          break;
-      }
-
-      String response;
-      while (client.available())
-        response += client.readString();
-
-      int jsonStart = response.indexOf('{');
-      if (jsonStart > 0)
-        response = response.substring(jsonStart);
-
-      DynamicJsonDocument doc(2048);
-      if (deserializeJson(doc, response) == DeserializationError::Ok &&
-          doc["success"]) {
-        offsetSeconds = doc["timezone"]["offset"] | 0;
-        gotOffset = true;
-        Serial.printf("✅ Timezone offset: %d seconds\n", offsetSeconds);
-        break;
-      } else {
-        Serial.println("❌ Failed to parse ipwho.is response");
-      }
-    } else {
-      Serial.println("❌ Connection to ipwho.is failed");
-    }
-
-    delay(1000);
+  if (timezoneOffsetSeconds == 0) {
+    Serial.println("⏰ Syncing time from NTP (UTC)");
+  } else {
+    int hours = timezoneOffsetSeconds / 3600;
+    int minutes = (abs(timezoneOffsetSeconds) % 3600) / 60;
+    Serial.printf("⏰ Syncing time from NTP (UTC%+d:%02d)\n", hours, minutes);
   }
 
-  if (!gotOffset) {
-    return false;
-  }
-
-  if (offsetSeconds == 0) {
-    Serial.println("⚠️ Using default UTC offset (0)");
-  }
-
-  // Step 2: Try to sync time from NTP server using offset
   WiFiUDP udp;
-  NTPClient timeClient(udp, "pool.ntp.org", offsetSeconds);
+  NTPClient timeClient(udp, "pool.ntp.org", timezoneOffsetSeconds);
   timeClient.begin();
 
   for (int attempt = 1; attempt <= maxRetries; attempt++) {

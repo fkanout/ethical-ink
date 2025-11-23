@@ -613,12 +613,48 @@ void ScreenUI::showInitializationScreen() {
     // First line: "MAWAQIT Frame" - Large font
     d_.setFont(&Cairo_Bold40pt7b);
     d_.setCursor(centerX - 280, centerY);
-    d_.print("MAWAQIT Frame");
+    d_.print("eTaqweem");
 
     // Third line: Setup instructions - Smaller font
     d_.setFont(&Cairo_Bold12pt7b);
     d_.setCursor(centerX - 330, centerY + 80);
-    d_.print("Enable Bluetooth on your phone and open MAWAQIT app to start");
+    d_.print("Enable Bluetooth on your phone and open eTaqweem app to start");
+
+  } while (d_.nextPage());
+}
+
+void ScreenUI::showInitializationScreenWithError(const char *errorMsg) {
+  d_.setFullWindow();
+  d_.firstPage();
+  do {
+    d_.fillScreen(GxEPD_BLACK);
+    d_.setTextColor(GxEPD_WHITE);
+
+    // Center the text on screen
+    int16_t centerX = W_ / 2; // Center X for 800px wide screen
+    int16_t centerY = H_ / 2; // Center Y for 480px high screen
+
+    // First line: "MAWAQIT Frame" - Large font
+    d_.setFont(&Cairo_Bold40pt7b);
+    d_.setCursor(centerX - 280, centerY);
+    d_.print("eTaqweem ");
+
+    // Third line: Setup instructions - Smaller font
+    d_.setFont(&Cairo_Bold12pt7b);
+    d_.setCursor(centerX - 330, centerY + 80);
+    d_.print("Enable Bluetooth on your phone and open eTaqweem app to start");
+
+    // Error message at footer
+    if (errorMsg) {
+      d_.setFont(&Cairo_Bold12pt7b);
+      int16_t x1, y1;
+      uint16_t w, h;
+      d_.getTextBounds(errorMsg, 0, 0, &x1, &y1, &w, &h);
+      int16_t errorX = centerX - (w / 2) - x1;
+      int16_t errorY = H_ - 30; // 30px from bottom
+      d_.setCursor(errorX, errorY);
+      d_.print(errorMsg);
+    }
 
   } while (d_.nextPage());
 }

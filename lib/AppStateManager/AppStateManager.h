@@ -38,7 +38,13 @@ struct RTCData {
   int day = 0;
   int month = 0;
 
-  char mosqueUUID[40] = ""; // Store mosque UUID (36 chars + null terminator + padding)
+  char mosqueUUID[40] =
+      ""; // Store mosque UUID (36 chars + null terminator + padding)
+  int timezoneOffsetSeconds = 0; // Timezone offset in seconds (e.g., 3600 for UTC+1)
+  int wifiRetryCount = 0; // Track WiFi connection failures
+  int bootCount = 0;      // Track rapid reboots for factory reset detection
+  unsigned long lastBootMillis =
+      0; // Last boot time in milliseconds (from millis())
 };
 
 extern RTCData rtcData;

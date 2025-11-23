@@ -28,7 +28,8 @@ public:
   void setTimeToSpecificHourAndMinute(int newHour, int newMinute,
                                       int newMonth = 0, int newDay = 0);
   bool syncTimeFromNTPWithOffset(int maxRetries = 3,
-                                 uint32_t timeoutMs = 10000);
+                                 uint32_t timeoutMs = 10000,
+                                 int timezoneOffsetSeconds = 0);
   time_t getEpochTime();
 };
 
