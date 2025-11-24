@@ -20,6 +20,8 @@
 #include <RTCManager.h>
 #include <SPI.h>
 #include <esp_wifi.h>
+#include <WeatherManager.h>
+#include <AppStateManager.h>
 
 // Pins for E-paper
 #define EPD_CS 10
@@ -51,6 +53,7 @@ const char *PRAYER_NAMES[] = {"Fajr", "Sunrise", "Dhuhr",
 
 const unsigned long mosqueUpdateInterval = 6UL * 60UL * 60UL; // 6 hours
 const unsigned long userEventsUpdateInterval = 10UL * 60UL;   // 10 minutes
+const unsigned long weatherUpdateInterval = 60UL * 60UL;      // 1 hour
 bool isFetching = false;
 
 AppState state = BOOTING;
@@ -962,9 +965,20 @@ void handleConnectingWifi() {
           writeJsonFile("/prayer_config.json", configJson);
           Serial.println("💾 Configuration saved to SPIFFS");
 
-    BLEManager::getInstance().stopAdvertising();
-    g_bleAdvertising = false; // Clear BLE advertising flag
-    state = SYNCING_TIME;
+          // Fetch initial weather
+          Serial.println("🌤️ Fetching initial weather...");
+          WeatherManager::getInstance().asyncFetchWeather(
+              rtcData.latitude, rtcData.longitude, [](bool success) {
+                if (success) {
+                  Serial.println("✅ Initial weather fetched successfully");
+                } else {
+                  Serial.println("⚠️ Failed to fetch initial weather (will retry later)");
+                }
+                
+                BLEManager::getInstance().stopAdvertising();
+                g_bleAdvertising = false; // Clear BLE advertising flag
+                state = SYNCING_TIME;
+              });
         });
   });
 
@@ -1081,6 +1095,32 @@ void fetchUserEvents() {
   });
 }
 
+void fetchWeather() {
+  Serial.println("🌤️ Fetching weather...");
+  WiFiManager::getInstance().asyncConnectWithSavedCredentials();
+
+  WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
+    Serial.println("❌ Failed to connect to Wi-Fi to fetch weather");
+    state = SLEEPING;
+  });
+
+  WiFiManager::getInstance().onWifiConnectedCallback([]() {
+    Serial.println("✅ Connected to Wi-Fi for weather fetch.");
+    
+    WeatherManager::getInstance().asyncFetchWeather(
+        rtcData.latitude, rtcData.longitude, [](bool success) {
+          if (success) {
+            Serial.println("✅ Weather fetched successfully");
+            // Force full refresh on next render to show updated weather
+            g_renderState.initialized = false;
+          } else {
+            Serial.println("❌ Failed to fetch weather");
+          }
+          state = SLEEPING;
+        });
+  });
+}
+
 void handlePeriodicTasks() {
   Serial.println("🔄 Running periodic tasks...");
   
@@ -1091,6 +1131,14 @@ void handlePeriodicTasks() {
     return;
   }
   Serial.println("⚠️ Prayer times do not need to be fetched yet.");
+
+  // Check if we need to fetch weather (every 30 minutes)
+  if (shouldFetchBasedOnInterval(rtcData.weatherLastUpdate,
+                                 weatherUpdateInterval, "WEATHER")) {
+    fetchWeather();
+    return;
+  }
+  Serial.println("⚠️ Weather does not need to be fetched yet.");
 
   // User events fetching (commented out for now)
   // if (shouldFetchBasedOnInterval(rtcData.userEventsUpdateMillis,

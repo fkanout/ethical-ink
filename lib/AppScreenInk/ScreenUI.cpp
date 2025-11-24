@@ -1,7 +1,11 @@
 // ScreenUI.cpp
 #include "ScreenUI.h"
+#include <AppStateManager.h>
 #include <GxEPD2_BW.h> // for color constants (GxEPD_WHITE/BLACK). If you use others, define 0/1.
 #include <WiFi.h>
+#include <string.h>
+
+extern RTCData rtcData;
 
 #ifndef GxEPD_WHITE
 #define GxEPD_WHITE 0xFFFF
@@ -72,6 +76,40 @@ void ScreenUI::fullRenderWithStatusBar(
     d_.setTextColor(GxEPD_WHITE);
     d_.setCursor(textX_name, textY_name);
     d_.print(mosqueText);
+
+    // Weather info on the right side - same vertical level as mosque name
+    if (rtcData.currentTemp != 0.0 || rtcData.weatherDesc[0] != '\0') {
+      // Map weather description to icon
+      const char *weatherIcon = "?";
+      if (strcmp(rtcData.weatherDesc, "Clear") == 0) {
+        weatherIcon = "☀"; // Sun
+      } else if (strcmp(rtcData.weatherDesc, "Cloudy") == 0) {
+        weatherIcon = "☁"; // Cloud
+      } else if (strcmp(rtcData.weatherDesc, "Rain") == 0) {
+        weatherIcon = "☂"; // Umbrella
+      } else if (strcmp(rtcData.weatherDesc, "Snow") == 0) {
+        weatherIcon = "❄"; // Snowflake
+      } else if (strcmp(rtcData.weatherDesc, "Storm") == 0) {
+        weatherIcon = "⚡"; // Lightning
+      } else if (strcmp(rtcData.weatherDesc, "Fog") == 0) {
+        weatherIcon = "≡"; // Fog lines
+      }
+      
+      char weatherText[32];
+      snprintf(weatherText, sizeof(weatherText), "%.0f°C %s", 
+               rtcData.currentTemp, weatherIcon);
+      
+      d_.setFont(&Cairo_Bold12pt7b);
+      int16_t x1_weather, y1_weather;
+      uint16_t w_weather, h_weather;
+      d_.getTextBounds(weatherText, 0, 0, &x1_weather, &y1_weather, 
+                       &w_weather, &h_weather);
+      int16_t textX_weather = W_ - w_weather - 40 - x1_weather; // 40px margin from right
+      int16_t textY_weather = L.headerY + (L.boxH - h_weather) / 2 - y1_weather;
+      d_.setTextColor(GxEPD_WHITE);
+      d_.setCursor(textX_weather, textY_weather);
+      d_.print(weatherText);
+    }
 
     // "Prayer in" label - white text - positioned just after mosque name
     const int16_t countdownX = (W_ - L.countdownW) / 2;

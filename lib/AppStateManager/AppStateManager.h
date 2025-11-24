@@ -52,6 +52,11 @@ struct RTCData {
   int bootCount = 0;      // Track rapid reboots for factory reset detection
   unsigned long lastBootMillis =
       0; // Last boot time in milliseconds (from millis())
+  
+  // Weather information
+  float currentTemp = 0.0;        // Current temperature in Celsius
+  char weatherDesc[20] = "";      // Weather description (e.g., "Clear", "Rain")
+  time_t weatherLastUpdate = 0;   // Last weather update timestamp
 };
 
 extern RTCData rtcData;
