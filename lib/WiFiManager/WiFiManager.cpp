@@ -1,6 +1,7 @@
 #include "WiFiManager.h"
 #include "AppState.h"
 #include <ArduinoJson.h>
+#include <esp_wifi.h>
 
 #include <SPIFFSHelper.h>
 #include <vector>
@@ -8,6 +9,14 @@
 WiFiManager::WiFiManager() {
   WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_STA);
+  
+  // Improve WiFi stability
+  WiFi.persistent(true);  // Store credentials in flash
+  WiFi.setAutoConnect(false);  // Manual control
+  
+  // MUST enable modem sleep for WiFi/BLE coexistence
+  // WIFI_PS_MIN_MODEM is required when BLE is active
+  esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 }
 
 WiFiManager &WiFiManager::getInstance() {
@@ -114,15 +123,19 @@ void WiFiManager::connectTask(void *parameter) {
   bool connected = false;
 
   for (int attempt = 1; attempt <= WIFI_MAX_RETRIES; attempt++) {
-    Serial.printf("🔄 Attempt %d: Connecting to %s\n", attempt, params->ssid);
+    Serial.printf("🔄 Attempt %d/%d: Connecting to %s\n", attempt, WIFI_MAX_RETRIES, params->ssid);
 
-    WiFi.disconnect();
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-
+    // Properly disconnect and wait
+    WiFi.disconnect(true);  // true = turn off WiFi
+    vTaskDelay(500 / portTICK_PERIOD_MS);  // Wait longer for complete disconnect
+    
+    // Reconnect
+    WiFi.mode(WIFI_STA);  // Ensure station mode
     WiFi.begin(params->ssid, params->password);
 
+    // Wait for connection with timeout
     unsigned long start = millis();
-    while ((WiFi.status() != WL_CONNECTED) && (millis() - start < 10000)) {
+    while ((WiFi.status() != WL_CONNECTED) && (millis() - start < 15000)) {  // Increased to 15 seconds
       vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 
@@ -140,20 +153,24 @@ void WiFiManager::connectTask(void *parameter) {
       }
       break;
     } else {
-      Serial.println("❌ Connection attempt failed. Retrying...");
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
+      Serial.printf("❌ Connection attempt %d failed. ", attempt);
+      if (attempt < WIFI_MAX_RETRIES) {
+        Serial.println("Retrying...");
+        vTaskDelay(2000 / portTICK_PERIOD_MS);  // Wait 2 seconds before retry
+      } else {
+        Serial.println("No more retries.");
+      }
     }
   }
 
   if (!connected) {
     Serial.println("❌ Failed to connect after all retries.");
+    WiFi.disconnect();
     if (WiFiManager::getInstance().onWifiFailedToConnect) {
       WiFiManager::getInstance().onWifiFailedToConnect();
     }
-    WiFi.disconnect();
-    Serial.println("🔄 Restarting device...");
-    delay(1000);
-    ESP.restart();
+    // Don't restart device - let the callback handle the failure
+    // Restarting would lose RTC memory and cause boot loops
   }
 
   // Clean up

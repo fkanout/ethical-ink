@@ -112,58 +112,26 @@ void ScreenUI::fullRenderWithStatusBar(
     d_.setCursor(textX_count, textY_count);
     d_.print(countdownStr);
 
-    // Get current prayer time and iqama for countdown box
-    const char *currentPrayerTime = (highlightIndex >= 0 && highlightIndex < 5)
-                                        ? prayerTimes[highlightIndex]
-                                        : nullptr;
-    const char *currentIqamaTime = (highlightIndex >= 0 && highlightIndex < 5)
-                                       ? iqamaTimes[highlightIndex]
-                                       : nullptr;
-
-    // Calculate iqama delay
-    int delay = 0;
-    if (currentPrayerTime && currentIqamaTime) {
-      if (strchr(currentIqamaTime, ':') == nullptr) {
-        delay = atoi(currentIqamaTime);
-      } else {
-        int prayerH = 0, prayerM = 0, iqamaH = 0, iqamaM = 0;
-        sscanf(currentPrayerTime, "%d:%d", &prayerH, &prayerM);
-        sscanf(currentIqamaTime, "%d:%d", &iqamaH, &iqamaM);
-        delay = (iqamaH * 60 + iqamaM) - (prayerH * 60 + prayerM);
-      }
-    }
-    char iqamaDelayStr[8];
-    snprintf(iqamaDelayStr, sizeof(iqamaDelayStr), "+%d", delay);
-
-    // Draw prayer time centered vertically on screen
-    if (currentPrayerTime) {
-      d_.setFont(&Cairo_Bold40pt7b);
-      d_.getTextBounds(currentPrayerTime, 0, 0, &x1_count, &y1_count, &w_count,
-                       &h_count);
-      textX_count =
-          (W_ / 2) - (w_count / 2) - x1_count; // Center horizontally on screen
-      textY_count =
-          (H_ / 2) - 20 -
-          y1_count; // Center vertically on screen (slightly above center)
-      d_.setTextColor(GxEPD_WHITE);
-      d_.setCursor(textX_count, textY_count);
-      d_.print(currentPrayerTime);
+    // Get current RTC time to display under countdown
+    struct tm timeinfo;
+    char currentTimeStr[6] = "00:00";
+    if (getLocalTime(&timeinfo)) {
+      snprintf(currentTimeStr, sizeof(currentTimeStr), "%02d:%02d",
+               timeinfo.tm_hour, timeinfo.tm_min);
     }
 
-    // Draw iqama delay only if there's an actual delay (not 0)
-    if (delay > 0) {
-      d_.setFont(&Cairo_Bold18pt7b);
-      d_.getTextBounds(iqamaDelayStr, 0, 0, &x1_count, &y1_count, &w_count,
-                       &h_count);
-      textX_count =
-          (W_ / 2) - (w_count / 2) - x1_count; // Center horizontally on screen
-      textY_count =
-          (H_ / 2) + 40 - y1_count; // Center vertically on screen (pushed down
-                                    // 20px more from original)
-      d_.setTextColor(GxEPD_WHITE);
-      d_.setCursor(textX_count, textY_count);
-      d_.print(iqamaDelayStr);
-    }
+    // Draw current RTC time centered vertically on screen
+    d_.setFont(&Cairo_Bold40pt7b);
+    d_.getTextBounds(currentTimeStr, 0, 0, &x1_count, &y1_count, &w_count,
+                     &h_count);
+    textX_count =
+        (W_ / 2) - (w_count / 2) - x1_count; // Center horizontally on screen
+    textY_count =
+        (H_ / 2) - 20 -
+        y1_count; // Center vertically on screen (slightly above center)
+    d_.setTextColor(GxEPD_WHITE);
+    d_.setCursor(textX_count, textY_count);
+    d_.print(currentTimeStr);
 
     // Prayer time boxes row with iqama times - custom drawing for reversed
     // colors
@@ -273,15 +241,17 @@ void ScreenUI::partialRenderWithStatusBar(
   // Update status bar
   redrawStatusBarRegion(statusInfo);
 
-  // Only update countdown with prayer time and iqama - skip header and prayer
+  // Get current RTC time to display under countdown
+  struct tm timeinfo;
+  char currentTimeStr[6] = "00:00";
+  if (getLocalTime(&timeinfo)) {
+    snprintf(currentTimeStr, sizeof(currentTimeStr), "%02d:%02d",
+             timeinfo.tm_hour, timeinfo.tm_min);
+  }
+
+  // Only update countdown with current time - skip header and prayer
   // boxes since they haven't changed
-  const char *currentPrayerTime = (highlightIndex >= 0 && highlightIndex < 5)
-                                      ? prayerTimes[highlightIndex]
-                                      : nullptr;
-  const char *currentIqamaTime = (highlightIndex >= 0 && highlightIndex < 5)
-                                     ? iqamaTimes[highlightIndex]
-                                     : nullptr;
-  redrawCountdownRegion(L, countdownStr, currentPrayerTime, currentIqamaTime);
+  redrawCountdownRegion(L, countdownStr, currentTimeStr);
 }
 
 void ScreenUI::redrawStatusBarRegion(const StatusInfo &statusInfo) {
@@ -478,70 +448,47 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
 
 void ScreenUI::redrawCountdownRegion(const ScreenLayout &L,
                                      const char *countdownStr,
-                                     const char *prayerTime,
-                                     const char *iqamaTime) {
+                                     const char *currentTime) {
   const int16_t countdownX = (W_ - L.countdownW) / 2;
-  d_.setPartialWindow(countdownX, L.countdownY, L.countdownW, L.countdownH);
+  
+  // Expand partial window to include both countdown box AND center time area
+  // From countdown box to center of screen
+  const int16_t windowY = L.countdownY;
+  const int16_t windowH = (H_ / 2) + 80 - L.countdownY; // Include area for center time
+  const int16_t windowX = 0;
+  const int16_t windowW = W_;
+  
+  d_.setPartialWindow(windowX, windowY, windowW, windowH);
   d_.firstPage();
   do {
-    d_.fillRect(countdownX, L.countdownY, L.countdownW, L.countdownH,
-                GxEPD_BLACK); // Black background
+    // Clear the entire region
+    d_.fillRect(windowX, windowY, windowW, windowH, GxEPD_BLACK);
 
-    // Draw white border
+    // Draw countdown box with white border
     d_.drawRect(countdownX, L.countdownY, L.countdownW, L.countdownH,
                 GxEPD_WHITE);
 
-    // Draw countdown in large font - pushed to top
-    d_.setFont(
-        &Cairo_Bold60pt7b); // Changed from 70pt to 60pt to match full render
+    // Draw countdown in large font inside the box
+    d_.setFont(&Cairo_Bold60pt7b);
     int16_t x1, y1;
     uint16_t w, h;
     d_.getTextBounds(countdownStr, 0, 0, &x1, &y1, &w, &h);
     int16_t textX = countdownX + (L.countdownW - w) / 2 - x1;
-    int16_t textY = L.countdownY + (L.countdownH - h) / 2 -
-                    y1; // Centered vertically in the box
+    int16_t textY = L.countdownY + (L.countdownH - h) / 2 - y1;
     d_.setTextColor(GxEPD_WHITE);
     d_.setCursor(textX, textY);
     d_.print(countdownStr);
 
-    // Calculate iqama delay
-    int delay = 0;
-    if (prayerTime && iqamaTime) {
-      if (strchr(iqamaTime, ':') == nullptr) {
-        delay = atoi(iqamaTime);
-      } else {
-        int prayerH = 0, prayerM = 0, iqamaH = 0, iqamaM = 0;
-        sscanf(prayerTime, "%d:%d", &prayerH, &prayerM);
-        sscanf(iqamaTime, "%d:%d", &iqamaH, &iqamaM);
-        delay = (iqamaH * 60 + iqamaM) - (prayerH * 60 + prayerM);
-      }
-    }
-    char iqamaDelayStr[8];
-    snprintf(iqamaDelayStr, sizeof(iqamaDelayStr), "+%d", delay);
-
-    // Draw prayer time centered vertically on screen
-    if (prayerTime) {
+    // Draw current RTC time centered vertically on screen
+    if (currentTime) {
       d_.setFont(&Cairo_Bold40pt7b);
-      d_.getTextBounds(prayerTime, 0, 0, &x1, &y1, &w, &h);
+      d_.getTextBounds(currentTime, 0, 0, &x1, &y1, &w, &h);
       textX = (W_ / 2) - (w / 2) - x1; // Center horizontally on screen
       textY = (H_ / 2) - 20 -
               y1; // Center vertically on screen (slightly above center)
       d_.setTextColor(GxEPD_WHITE);
       d_.setCursor(textX, textY);
-      d_.print(prayerTime);
-    }
-
-    // Draw iqama delay only if there's an actual delay (not 0)
-    if (delay > 0) {
-      d_.setFont(&Cairo_Bold18pt7b);
-      d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
-      textX = (W_ / 2) - (w / 2) - x1; // Center horizontally on screen
-      textY =
-          (H_ / 2) + 40 -
-          y1; // Center vertically on screen (pushed down 20px more from original)
-      d_.setTextColor(GxEPD_WHITE);
-      d_.setCursor(textX, textY);
-      d_.print(iqamaDelayStr);
+      d_.print(currentTime);
     }
   } while (d_.nextPage());
 }

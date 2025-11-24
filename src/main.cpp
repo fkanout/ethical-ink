@@ -19,6 +19,7 @@
 #include <AladhanManager.h>
 #include <RTCManager.h>
 #include <SPI.h>
+#include <esp_wifi.h>
 
 // Pins for E-paper
 #define EPD_CS 10
@@ -559,6 +560,46 @@ void handleBooting() {
   Serial.println("✅ SPIFFS mounted successfully");
   AppStateManager::load();
 
+  // Restore configuration from SPIFFS if available
+  if (SPIFFS.exists("/prayer_config.json")) {
+    String configJson = readJsonFile("/prayer_config.json");
+    if (!configJson.isEmpty() && configJson != "{}") {
+      StaticJsonDocument<512> doc;
+      DeserializationError err = deserializeJson(doc, configJson);
+      if (!err) {
+        rtcData.latitude = doc["latitude"] | 0.0;
+        rtcData.longitude = doc["longitude"] | 0.0;
+        rtcData.calculationMethod = doc["calculation_method"] | 4;
+        rtcData.timezoneOffsetSeconds = doc["timezone_offset"] | 0;
+        
+        // Restore city name if available
+        if (doc.containsKey("city_name")) {
+          String cityName = doc["city_name"].as<String>();
+          if (!cityName.isEmpty()) {
+            strncpy(rtcData.cityName, cityName.c_str(), sizeof(rtcData.cityName) - 1);
+            rtcData.cityName[sizeof(rtcData.cityName) - 1] = '\0';
+          }
+        }
+        
+        AppStateManager::save(); // Save restored values to RTC memory
+        
+        int hours = rtcData.timezoneOffsetSeconds / 3600;
+        int minutes = (abs(rtcData.timezoneOffsetSeconds) % 3600) / 60;
+        Serial.println("📦 Configuration restored from SPIFFS:");
+        Serial.printf("   Location: %.6f, %.6f\n", rtcData.latitude, rtcData.longitude);
+        Serial.printf("   Timezone: UTC%+d:%02d (%d seconds)\n", hours, minutes, rtcData.timezoneOffsetSeconds);
+        Serial.printf("   Calculation Method: %d\n", rtcData.calculationMethod);
+        if (rtcData.cityName[0] != '\0') {
+          Serial.printf("   City: %s\n", rtcData.cityName);
+        }
+      } else {
+        Serial.println("⚠️ Failed to parse prayer_config.json");
+      }
+    }
+  } else {
+    Serial.println("ℹ️ No saved configuration found in SPIFFS");
+  }
+
   // Factory reset detection: Hold BOOT button for 10 seconds during boot
   pinMode(FACTORY_RESET_BUTTON, INPUT_PULLUP);
   delay(100); // Give pin time to stabilize
@@ -691,6 +732,14 @@ void handleConnectingWifiWithSavedCredentials() {
 
 void handleSyncingTime() {
   Serial.println("🔄 Syncing time...");
+  
+  // Safety check: Ensure timezone is configured
+  if (rtcData.timezoneOffsetSeconds == 0 && (rtcData.latitude == 0.0 || rtcData.longitude == 0.0)) {
+    Serial.println("⚠️ No timezone configured - need to reconfigure via BLE");
+    state = ADVERTISING_BLE;
+    return;
+  }
+  
   RTCManager &rtc = RTCManager::getInstance();
   if (rtc.syncTimeFromNTPWithOffset(3, 10000, rtcData.timezoneOffsetSeconds)) {
     Serial.println("✅ Time synced successfully");
@@ -704,6 +753,11 @@ void handleSyncingTime() {
 
 void handleAdvertisingBLE() {
   Serial.println("🔔 Advertising BLE...");
+  
+  // Ensure WiFi is completely stopped before starting BLE
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
 
   // Display initialization message on e-ink screen
   GxEPD2Adapter<decltype(display)> epdAdapter(display);
@@ -721,6 +775,12 @@ void handleAdvertisingBLE() {
 
 void handleWaitingForWifiScan() {
   Serial.println("🔄 Waiting for Wi-Fi scan...");
+  
+  // Reinitialize WiFi in STA mode with BLE coexistence
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_ps(WIFI_PS_MIN_MODEM);  // Required for BLE coexistence
+  delay(100);
+  
   WiFiManager &wifi = WiFiManager::getInstance();
   wifi.asyncScanNetworks();
   wifi.setScanResultCallback([](const std::vector<ScanResult> &results) {
@@ -760,7 +820,7 @@ void handleWaitingForWifiScan() {
       
       // Legacy: mosque UUID (kept for backward compatibility but not used)
       String mosqueUuid = doc["mosque_uuid"].as<String>();
-      
+
       if (ssid.isEmpty() || password.isEmpty()) {
         Serial.println("⚠️ Incomplete Wi-Fi credentials.");
         state = ADVERTISING_BLE;
@@ -879,17 +939,17 @@ void handleConnectingWifi() {
                         hours, minutes, g_receivedTimezoneOffset);
 
           // Legacy: Save mosque UUID if provided (for backward compatibility)
-          if (!g_receivedMosqueUUID.isEmpty()) {
-            strncpy(rtcData.mosqueUUID, g_receivedMosqueUUID.c_str(),
-                    sizeof(rtcData.mosqueUUID) - 1);
+    if (!g_receivedMosqueUUID.isEmpty()) {
+      strncpy(rtcData.mosqueUUID, g_receivedMosqueUUID.c_str(),
+              sizeof(rtcData.mosqueUUID) - 1);
             rtcData.mosqueUUID[sizeof(rtcData.mosqueUUID) - 1] = '\0';
             Serial.printf("💾 Legacy mosque UUID saved: %s\n", rtcData.mosqueUUID);
           }
 
           // Persist to RTC memory
-          AppStateManager::save();
+      AppStateManager::save();
 
-          // Also save to SPIFFS for backup
+      // Also save to SPIFFS for backup
           String configJson = "{";
           configJson += "\"latitude\":" + String(rtcData.latitude, 6) + ",";
           configJson += "\"longitude\":" + String(rtcData.longitude, 6) + ",";
@@ -902,9 +962,9 @@ void handleConnectingWifi() {
           writeJsonFile("/prayer_config.json", configJson);
           Serial.println("💾 Configuration saved to SPIFFS");
 
-          BLEManager::getInstance().stopAdvertising();
-          g_bleAdvertising = false; // Clear BLE advertising flag
-          state = SYNCING_TIME;
+    BLEManager::getInstance().stopAdvertising();
+    g_bleAdvertising = false; // Clear BLE advertising flag
+    state = SYNCING_TIME;
         });
   });
 

@@ -95,7 +95,7 @@ bool RTCManager::syncTimeFromNTPWithOffset(int maxRetries, uint32_t timeoutMs, i
   }
 
   WiFiUDP udp;
-  NTPClient timeClient(udp, "pool.ntp.org", timezoneOffsetSeconds);
+  NTPClient timeClient(udp, "pool.ntp.org", timezoneOffsetSeconds, 60000);
   timeClient.begin();
 
   for (int attempt = 1; attempt <= maxRetries; attempt++) {
@@ -104,8 +104,16 @@ bool RTCManager::syncTimeFromNTPWithOffset(int maxRetries, uint32_t timeoutMs, i
       Serial.println("✅ NTP time sync complete");
       time_t now = timeClient.getEpochTime();
       updateRTC(now);
+      
+      // Print synced time for verification
+      struct tm timeinfo;
+      if (getLocalTime(&timeinfo)) {
+        Serial.printf("⏰ Synced Time: %04d-%02d-%02d %02d:%02d:%02d\n",
+                      timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+      }
+      
       timeClient.end();
-
       return true;
     }
     delay(timeoutMs);
