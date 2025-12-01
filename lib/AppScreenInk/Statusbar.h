@@ -7,8 +7,10 @@
 #include <time.h>
 
 struct StatusInfo {
-  String currentTime; // "HH:MM"
+  String currentTime; // "HH:MM" or awake counter (temporary debug)
   String currentDate; // "Mon DD"
+  unsigned long awakeSeconds; // Cumulative awake seconds (temporary debug)
+  unsigned long wakeCycles;   // Number of wake cycles (temporary debug)
   bool wifiConnected;
   int wifiRssi; // Signal strength
   bool bleAdvertising;
@@ -23,17 +25,18 @@ private:
   static const int BLE_ICON_HEIGHT = 48;
 
 public:
-  static StatusInfo getStatusInfo(bool bleAdvertising = false) {
+  static StatusInfo getStatusInfo(bool bleAdvertising = false, unsigned long awakeSeconds = 0, unsigned long wakeCycles = 0) {
     StatusInfo status;
 
     // Get current time and date
     struct tm timeinfo;
     if (getLocalTime(&timeinfo)) {
       status.timeValid = true;
-      // Format time as HH:MM
-      char timeStr[6];
-      sprintf(timeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
-      status.currentTime = String(timeStr);
+      
+      // TEMPORARY DEBUG: Show awake counter and cycles instead of current time
+      char awakeStr[24];
+      sprintf(awakeStr, "%lus #%lu", awakeSeconds, wakeCycles);
+      status.currentTime = String(awakeStr);
 
       // Format date as "Mon DD" for compact display
       const char *dayNames[] = {"Sun", "Mon", "Tue", "Wed",
@@ -49,6 +52,10 @@ public:
       status.currentTime = "--:--";
       status.currentDate = "-- --";
     }
+
+    // Store awake seconds and cycles
+    status.awakeSeconds = awakeSeconds;
+    status.wakeCycles = wakeCycles;
 
     // WiFi status
     status.wifiConnected = (WiFi.status() == WL_CONNECTED);

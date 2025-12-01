@@ -16,6 +16,10 @@
 #include "fonts/Cairo_Bold7pt7b.h"
 #include "fonts/Cairo_Bold9pt7b.h"
 
+// Weather Icons fonts (custom generated with byte alignment)
+#include "fonts/WeatherIcons50pt.h"
+#include "fonts/WeatherIconsNight50pt.h"
+
 #include "StatusBar.h"
 
 struct ScreenLayout {
@@ -85,4 +89,5 @@ private:
   void redrawHeaderRegion(const ScreenLayout &L, const char *mosqueName,
                           const char *headerLabel);
   void redrawStatusBarRegion(const StatusInfo &statusInfo);
+  void drawWeatherIcon(const char *weatherDesc, int16_t x, int16_t y, int16_t size);
 };

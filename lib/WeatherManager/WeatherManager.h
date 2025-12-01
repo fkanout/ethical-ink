@@ -22,3 +22,4 @@ public:
 
 #endif // WEATHER_MANAGER_H
 
+

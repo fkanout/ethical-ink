@@ -27,10 +27,6 @@ void WeatherManager::asyncFetchWeather(float latitude, float longitude,
 void WeatherManager::fetchTask(void *parameter) {
   FetchParams *params = static_cast<FetchParams *>(parameter);
 
-  HTTPClient http;
-  WiFiClientSecure client;
-  client.setInsecure(); // Skip certificate validation
-
   // Build Open-Meteo API URL
   // Format: https://api.open-meteo.com/v1/forecast?latitude=X&longitude=Y&current=temperature_2m,weather_code
   String url = "https://api.open-meteo.com/v1/forecast?";
@@ -41,14 +37,43 @@ void WeatherManager::fetchTask(void *parameter) {
   Serial.printf("🌤️ Fetching weather from Open-Meteo: %s\n", url.c_str());
 
   bool success = false;
+  const int MAX_RETRIES = 2;
+  int httpCode = -1;
+  String payload = "";
 
-  http.begin(client, url);
-  http.setTimeout(15000);
-  int httpCode = http.GET();
+  // Retry loop
+  for (int attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+    HTTPClient http;
+    WiFiClientSecure client;
+    client.setInsecure(); // Skip certificate validation
+
+    if (attempt > 1) {
+      Serial.printf("🔄 Retry attempt %d/%d for Open-Meteo\n", attempt - 1, MAX_RETRIES);
+      delay(2000); // Wait 2 seconds between retries
+    }
+
+    http.begin(client, url);
+    http.setTimeout(15000);
+    httpCode = http.GET();
+
+    if (httpCode == HTTP_CODE_OK) {
+      payload = http.getString();
+      Serial.printf("✅ Received %d bytes from Open-Meteo\n", payload.length());
+      http.end();
+      break; // Success, exit retry loop
+    } else {
+      Serial.printf("❌ Open-Meteo request failed, code: %d (attempt %d/%d)\n", 
+                    httpCode, attempt, MAX_RETRIES + 1);
+      http.end();
+      
+      if (attempt == MAX_RETRIES + 1) {
+        // All retries exhausted
+        Serial.println("❌ All Open-Meteo retry attempts failed");
+      }
+    }
+  }
 
   if (httpCode == HTTP_CODE_OK) {
-    String payload = http.getString();
-    Serial.printf("✅ Received %d bytes from Open-Meteo\n", payload.length());
 
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, payload);
@@ -99,10 +124,8 @@ void WeatherManager::fetchTask(void *parameter) {
       Serial.printf("❌ Failed to parse Open-Meteo JSON: %s\n", error.c_str());
     }
   } else {
-    Serial.printf("❌ Open-Meteo request failed, code: %d\n", httpCode);
+    Serial.println("❌ All Open-Meteo attempts failed");
   }
-
-  http.end();
 
   if (params->callback) {
     params->callback(success);

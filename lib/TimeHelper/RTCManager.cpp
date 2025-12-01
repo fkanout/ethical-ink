@@ -1,9 +1,6 @@
 #include "RTCManager.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <NTPClient.h>
-#include <WiFiClientSecure.h>
-#include <WiFiUdp.h>
 
 RTCManager &RTCManager::getInstance() {
   static RTCManager instance;
@@ -83,9 +80,6 @@ void RTCManager::setTimeToSpecificHourAndMinute(int newHour, int newMinute,
 }
 
 bool RTCManager::syncTimeFromNTPWithOffset(int maxRetries, uint32_t timeoutMs, int timezoneOffsetSeconds) {
-  WiFiClientSecure client;
-  client.setInsecure();
-
   if (timezoneOffsetSeconds == 0) {
     Serial.println("⏰ Syncing time from NTP (UTC)");
   } else {
@@ -94,32 +88,33 @@ bool RTCManager::syncTimeFromNTPWithOffset(int maxRetries, uint32_t timeoutMs, i
     Serial.printf("⏰ Syncing time from NTP (UTC%+d:%02d)\n", hours, minutes);
   }
 
-  WiFiUDP udp;
-  NTPClient timeClient(udp, "pool.ntp.org", timezoneOffsetSeconds, 60000);
-  timeClient.begin();
+  configTime(timezoneOffsetSeconds, 0, "pool.ntp.org", "time.nist.gov");
 
-  for (int attempt = 1; attempt <= maxRetries; attempt++) {
-    Serial.printf("⏳ Attempt %d to sync NTP time\n", attempt);
-    if (timeClient.update()) {
-      Serial.println("✅ NTP time sync complete");
-      time_t now = timeClient.getEpochTime();
-      updateRTC(now);
-      
-      // Print synced time for verification
-      struct tm timeinfo;
-      if (getLocalTime(&timeinfo)) {
-        Serial.printf("⏰ Synced Time: %04d-%02d-%02d %02d:%02d:%02d\n",
-                      timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-                      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-      }
-      
-      timeClient.end();
-      return true;
+  Serial.println("⏳ Waiting for NTP time sync...");
+  
+  int attempts = 0;
+  const int maxAttempts = maxRetries * 10;
+  struct tm timeinfo;
+  
+  while (!getLocalTime(&timeinfo) && attempts < maxAttempts) {
+    delay(100);
+    attempts++;
+    if (attempts % 10 == 0) {
+      Serial.printf("⏳ Waiting... (%d/%d)\n", attempts / 10, maxRetries);
     }
-    delay(timeoutMs);
   }
 
-  Serial.println("❌ Failed to sync time from NTP");
-  timeClient.end();
-  return false;
+  if (attempts >= maxAttempts) {
+    Serial.println("❌ Failed to sync time from NTP (timeout)");
+    return false;
+  }
+
+  Serial.println("✅ NTP time sync complete");
+  timeSynced = true;
+  
+  Serial.printf("⏰ Synced Time: %04d-%02d-%02d %02d:%02d:%02d\n",
+                timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+  
+  return true;
 }

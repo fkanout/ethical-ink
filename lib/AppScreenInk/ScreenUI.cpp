@@ -77,39 +77,6 @@ void ScreenUI::fullRenderWithStatusBar(
     d_.setCursor(textX_name, textY_name);
     d_.print(mosqueText);
 
-    // Weather info on the right side - same vertical level as mosque name
-    if (rtcData.currentTemp != 0.0 || rtcData.weatherDesc[0] != '\0') {
-      // Map weather description to icon
-      const char *weatherIcon = "?";
-      if (strcmp(rtcData.weatherDesc, "Clear") == 0) {
-        weatherIcon = "☀"; // Sun
-      } else if (strcmp(rtcData.weatherDesc, "Cloudy") == 0) {
-        weatherIcon = "☁"; // Cloud
-      } else if (strcmp(rtcData.weatherDesc, "Rain") == 0) {
-        weatherIcon = "☂"; // Umbrella
-      } else if (strcmp(rtcData.weatherDesc, "Snow") == 0) {
-        weatherIcon = "❄"; // Snowflake
-      } else if (strcmp(rtcData.weatherDesc, "Storm") == 0) {
-        weatherIcon = "⚡"; // Lightning
-      } else if (strcmp(rtcData.weatherDesc, "Fog") == 0) {
-        weatherIcon = "≡"; // Fog lines
-      }
-      
-      char weatherText[32];
-      snprintf(weatherText, sizeof(weatherText), "%.0f°C %s", 
-               rtcData.currentTemp, weatherIcon);
-      
-      d_.setFont(&Cairo_Bold12pt7b);
-      int16_t x1_weather, y1_weather;
-      uint16_t w_weather, h_weather;
-      d_.getTextBounds(weatherText, 0, 0, &x1_weather, &y1_weather, 
-                       &w_weather, &h_weather);
-      int16_t textX_weather = W_ - w_weather - 40 - x1_weather; // 40px margin from right
-      int16_t textY_weather = L.headerY + (L.boxH - h_weather) / 2 - y1_weather;
-      d_.setTextColor(GxEPD_WHITE);
-      d_.setCursor(textX_weather, textY_weather);
-      d_.print(weatherText);
-    }
 
     // "Prayer in" label - white text - positioned just after mosque name
     const int16_t countdownX = (W_ - L.countdownW) / 2;
@@ -149,6 +116,58 @@ void ScreenUI::fullRenderWithStatusBar(
     d_.setTextColor(GxEPD_WHITE);
     d_.setCursor(textX_count, textY_count);
     d_.print(countdownStr);
+
+    // Weather info - positioned to the right of countdown box
+    if (rtcData.currentTemp != 0.0 || rtcData.weatherDesc[0] != '\0') {
+      char tempText[16];
+      // Format just the number, we'll draw the degree symbol manually
+      snprintf(tempText, sizeof(tempText), "%.0f", rtcData.currentTemp);
+      
+      // Use 24pt font for temperature (smaller, distinct from icon)
+      d_.setFont(&Cairo_Bold24pt7b);
+      int16_t x1_temp, y1_temp;
+      uint16_t w_temp, h_temp;
+      d_.getTextBounds(tempText, 0, 0, &x1_temp, &y1_temp, &w_temp, &h_temp);
+      
+      const int spacing = 30;       // Space between countdown and weather
+      const int iconSize = 60;      // Icon size (50pt = ~60px)
+      const int iconTempGap = 6;    // Space between icon and temp (reduced to 6px)
+      
+      // Position to the right of countdown box
+      int16_t weatherStartX = countdownX + L.countdownW + spacing;
+      
+      // Calculate baseline position centered on countdown box
+      // Text baseline should be at the vertical center of countdown box
+      int16_t baselineY = L.countdownY + (L.countdownH / 2) + (h_temp / 2);
+      
+      // Position icon lower by 6px and closer to text (independent of text position)
+      // Icon is drawn with cursor at y + size, so icon top is at baseline - iconSize
+      int16_t iconX = weatherStartX;
+      int16_t iconY = baselineY - iconSize + 6;
+      
+      // Draw weather icon (left side, lowered by 6px)
+      drawWeatherIcon(rtcData.weatherDesc, iconX, iconY, iconSize);
+      
+      // Re-set font to 24pt before printing to ensure correct size
+      d_.setFont(&Cairo_Bold24pt7b);
+      
+      // Draw temperature (right of icon, moved up 5px to align with icon)
+      int16_t textX_temp = weatherStartX + iconSize + iconTempGap;
+      int16_t textY_temp = baselineY - 5;
+      
+      d_.setTextColor(GxEPD_WHITE);
+      d_.setCursor(textX_temp, textY_temp);
+      d_.print(tempText);
+      
+      // Draw manual degree circle (no 'C' text)
+      // Position: top-right corner of the temperature number
+      int16_t degreeX = textX_temp + w_temp + x1_temp + 6; 
+      int16_t degreeY = textY_temp + y1_temp + 4; // Top corner of the number
+      
+      // Draw degree circle - 40% thicker (radius 4.2 ≈ 4, draw multiple circles for thickness)
+      d_.drawCircle(degreeX, degreeY, 4, GxEPD_WHITE);
+      d_.drawCircle(degreeX, degreeY, 5, GxEPD_WHITE); // Outer ring for thickness
+    }
 
     // Get current RTC time to display under countdown
     struct tm timeinfo;
@@ -413,8 +432,7 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
     int16_t section3 = startY + boxH;
 
     if (i == highlightIndex) {
-      d_.fillRect(x, startY, boxW, boxH,
-                  GxEPD_WHITE); // White background for highlight
+      d_.fillRect(x, startY, boxW, boxH, GxEPD_WHITE);
       d_.drawRect(x, startY, boxW, boxH, GxEPD_WHITE);
 
       // Prayer Name (first third)
@@ -489,17 +507,40 @@ void ScreenUI::redrawCountdownRegion(const ScreenLayout &L,
                                      const char *currentTime) {
   const int16_t countdownX = (W_ - L.countdownW) / 2;
   
-  // Expand partial window to include both countdown box AND center time area
-  // From countdown box to center of screen
+  // Calculate the width needed for both countdown and center time
+  // Start from countdown box left edge, extend to cover center time
+  // Center time is centered on screen, so we need to check if it extends beyond countdown box
+  int16_t windowX = countdownX;
+  int16_t windowW = L.countdownW;
+  
+  // If we have center time, calculate its bounds and expand window if needed
+  if (currentTime) {
+    d_.setFont(&Cairo_Bold40pt7b);
+    int16_t x1_time, y1_time;
+    uint16_t w_time, h_time;
+    d_.getTextBounds(currentTime, 0, 0, &x1_time, &y1_time, &w_time, &h_time);
+    int16_t timeX = (W_ / 2) - (w_time / 2) - x1_time;
+    int16_t timeRight = timeX + w_time + 10; // Add small margin
+    
+    // Expand window to include time if it extends beyond countdown box
+    if (timeX < windowX) {
+      windowW += (windowX - timeX);
+      windowX = timeX;
+    }
+    if (timeRight > (countdownX + L.countdownW)) {
+      windowW = timeRight - windowX;
+    }
+  }
+  
+  // Partial window for countdown and center time ONLY
+  // Avoid touching the weather area on the right (starts at countdownX + countdownW + 30)
   const int16_t windowY = L.countdownY;
   const int16_t windowH = (H_ / 2) + 80 - L.countdownY; // Include area for center time
-  const int16_t windowX = 0;
-  const int16_t windowW = W_;
   
   d_.setPartialWindow(windowX, windowY, windowW, windowH);
   d_.firstPage();
   do {
-    // Clear the entire region
+    // Clear the exact window area with black background
     d_.fillRect(windowX, windowY, windowW, windowH, GxEPD_BLACK);
 
     // Draw countdown box with white border
@@ -654,4 +695,76 @@ void ScreenUI::showInitializationScreenWithError(const char *errorMsg) {
     }
 
   } while (d_.nextPage());
+}
+
+void ScreenUI::drawWeatherIcon(const char *weatherDesc, int16_t x, int16_t y, int16_t size) {
+  // Determine if it's night time based on prayer times (Maghrib to Fajr)
+  bool isNight = false;
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    // Get current time in minutes since midnight
+    int currentMinutes = timeinfo.tm_hour * 60 + timeinfo.tm_min;
+    
+    // Parse Maghrib time (HH:MM)
+    int maghribHour = 0, maghribMin = 0;
+    if (sscanf(rtcData.TODAY_MAGHRIB, "%d:%d", &maghribHour, &maghribMin) == 2) {
+      int maghribMinutes = maghribHour * 60 + maghribMin;
+      
+      // Parse Fajr time (HH:MM) - could be today or next day
+      int fajrHour = 0, fajrMin = 0;
+      const char* fajrTime = rtcData.TODAY_FAJR;
+      
+      // If current time is past midnight, we might need next day's Fajr
+      // But since Fajr is always early morning, TODAY_FAJR should be correct
+      if (sscanf(fajrTime, "%d:%d", &fajrHour, &fajrMin) == 2) {
+        int fajrMinutes = fajrHour * 60 + fajrMin;
+        
+        // Night time is: after Maghrib OR before Fajr
+        // Since Maghrib is in evening and Fajr is in early morning,
+        // we need to handle the day boundary
+        if (maghribMinutes > fajrMinutes) {
+          // Normal case: Maghrib (e.g., 18:00) > Fajr (e.g., 05:00)
+          // Night is: >= Maghrib OR < Fajr
+          isNight = (currentMinutes >= maghribMinutes || currentMinutes < fajrMinutes);
+        } else {
+          // Edge case: shouldn't happen, but handle it
+          isNight = (currentMinutes >= maghribMinutes && currentMinutes < fajrMinutes);
+        }
+      }
+    }
+  }
+  
+  // Use appropriate font (day or night)
+  if (isNight) {
+    d_.setFont(&WeatherIconsNight50pt);
+  } else {
+    d_.setFont(&WeatherIcons50pt);
+  }
+  d_.setTextColor(GxEPD_WHITE);
+  
+  // Map weather description to ASCII character
+  // Day font: A=sun, B=cloud, C=rain, D=drizzle, E=snow, F=storm, G=fog, H=unknown
+  // Night font: I=moon, J=cloudy-night, K=rain-night, L=drizzle-night, M=snow-night, N=storm-night, O=fog-night, P=unknown
+  char iconChar = isNight ? 'P' : 'H'; // Default: unknown
+  
+  if (strcmp(weatherDesc, "Clear") == 0) {
+    iconChar = isNight ? 'I' : 'A'; // moon : sun
+  } else if (strcmp(weatherDesc, "Cloudy") == 0 || strcmp(weatherDesc, "Overcast") == 0) {
+    iconChar = isNight ? 'J' : 'B'; // cloudy-night : cloud
+  } else if (strcmp(weatherDesc, "Rain") == 0) {
+    iconChar = isNight ? 'K' : 'C'; // rain-night : rain
+  } else if (strcmp(weatherDesc, "Drizzle") == 0) {
+    iconChar = isNight ? 'L' : 'D'; // drizzle-night : drizzle
+  } else if (strcmp(weatherDesc, "Snow") == 0) {
+    iconChar = isNight ? 'M' : 'E'; // snow-night : snow
+  } else if (strcmp(weatherDesc, "Storm") == 0 || strcmp(weatherDesc, "Thunderstorm") == 0) {
+    iconChar = isNight ? 'N' : 'F'; // storm-night : storm
+  } else if (strcmp(weatherDesc, "Fog") == 0 || strcmp(weatherDesc, "Mist") == 0) {
+    iconChar = isNight ? 'O' : 'G'; // fog-night : fog
+  }
+  
+  // Draw the weather icon
+  char iconStr[2] = {iconChar, '\0'};
+  d_.setCursor(x, y + size);
+  d_.print(iconStr);
 }

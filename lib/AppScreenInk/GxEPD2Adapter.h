@@ -37,12 +37,15 @@ public:
   int16_t height() const override { return d_.height(); }
 
   // Add these to GxEPD2Adapter implementations:
-void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) override {
+  void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) override {
     d_.drawLine(x0, y0, x1, y1, color);
-}
-void fillCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) override {
+  }
+  void fillCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) override {
     d_.fillCircle(x0, y0, r, color);
-}
+  }
+  void drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) override {
+    d_.drawCircle(x0, y0, r, color);
+  }
 
 private:
   T& d_;

@@ -31,9 +31,6 @@ void AladhanManager::asyncFetchMonthlyPrayerTimes(float latitude,
 void AladhanManager::fetchTask(void *parameter) {
   FetchParams *params = static_cast<FetchParams *>(parameter);
 
-  HTTPClient http;
-  WiFiClient client;
-
   // Build Aladhan API URL
   // Format: http://api.aladhan.com/v1/calendar/[year]/[month]?latitude=[lat]&longitude=[lon]&method=[method]
   String url = "http://api.aladhan.com/v1/calendar/";
@@ -46,15 +43,42 @@ void AladhanManager::fetchTask(void *parameter) {
 
   bool success = false;
   const char *outputPath = nullptr; // Not used - files are written directly per month
+  const int MAX_RETRIES = 2;
+  int httpCode = -1;
+  String payload = "";
 
-  http.begin(client, url);
-  http.setTimeout(15000); // 15 second timeout
-  int httpCode = http.GET();
+  // Retry loop
+  for (int attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+    HTTPClient http;
+    WiFiClient client;
+
+    if (attempt > 1) {
+      Serial.printf("🔄 Retry attempt %d/%d for Aladhan API\n", attempt - 1, MAX_RETRIES);
+      delay(2000); // Wait 2 seconds between retries
+    }
+
+    http.begin(client, url);
+    http.setTimeout(15000); // 15 second timeout
+    httpCode = http.GET();
+
+    if (httpCode == HTTP_CODE_OK) {
+      payload = http.getString();
+      Serial.printf("✅ Received %d bytes from Aladhan API\n", payload.length());
+      http.end();
+      break; // Success, exit retry loop
+    } else {
+      Serial.printf("❌ Aladhan API request failed, code: %d (attempt %d/%d)\n", 
+                    httpCode, attempt, MAX_RETRIES + 1);
+      http.end();
+      
+      if (attempt == MAX_RETRIES + 1) {
+        // All retries exhausted
+        Serial.println("❌ All Aladhan API retry attempts failed");
+      }
+    }
+  }
 
   if (httpCode == HTTP_CODE_OK) {
-    String payload = http.getString();
-    Serial.printf("✅ Received %d bytes from Aladhan API\n", payload.length());
-
     // Parse Aladhan API response
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, payload);
@@ -138,16 +162,8 @@ void AladhanManager::fetchTask(void *parameter) {
       }
     }
   } else {
-    Serial.printf("❌ HTTP request failed, code: %d\n", httpCode);
-    if (httpCode > 0) {
-      String errorPayload = http.getString();
-      if (errorPayload.length() > 0) {
-        Serial.println(errorPayload.substring(0, 200));
-      }
-    }
+    Serial.println("❌ All Aladhan API attempts failed");
   }
-
-  http.end();
 
   // Call callback with result
   if (params->callback) {

@@ -32,6 +32,7 @@ public:
   // Add these to IEpaper.h virtual methods:
   virtual void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) = 0;
   virtual void fillCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) = 0;
+  virtual void drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) = 0;
 
   // Convenience overloads for Arduino String
   size_t print(const String& s) { return print(s.c_str()); }

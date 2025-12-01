@@ -53,7 +53,7 @@ const char *PRAYER_NAMES[] = {"Fajr", "Sunrise", "Dhuhr",
 
 const unsigned long mosqueUpdateInterval = 6UL * 60UL * 60UL; // 6 hours
 const unsigned long userEventsUpdateInterval = 10UL * 60UL;   // 10 minutes
-const unsigned long weatherUpdateInterval = 60UL * 60UL;      // 1 hour
+const unsigned long weatherUpdateInterval = 30UL * 60UL;      // 30 minutes
 bool isFetching = false;
 
 AppState state = BOOTING;
@@ -290,8 +290,8 @@ void executeMainTask() {
   int highlightIndex = ScreenUI::getNextPrayerIndex(
       prayerTimesRow, timeinfo.tm_hour, timeinfo.tm_min);
 
-  // Get status information
-  StatusInfo statusInfo = StatusBar::getStatusInfo(g_bleAdvertising);
+  // Get status information (with awake time counter and cycles)
+  StatusInfo statusInfo = StatusBar::getStatusInfo(g_bleAdvertising, rtcData.cumulativeAwakeSeconds, rtcData.wakeCycleCount);
 
   // Use city name instead of mosque name
   String displayName = displayLocationName;
@@ -467,12 +467,19 @@ void fetchPrayerTimesFromAladhan() {
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
 
   WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
-    Serial.println("❌ Failed to connect to Wi-Fi to fetch prayer times");
+    Serial.println("❌ Failed to connect to Wi-Fi to fetch prayer times (will retry in 6 hours)");
+    // Reset retry count to prevent device restart during periodic tasks
+    rtcData.wifiRetryCount = 0;
+    AppStateManager::save();
     state = SLEEPING;
   });
 
   WiFiManager::getInstance().onWifiConnectedCallback([]() {
     Serial.println("✅ Connected to Wi-Fi for Aladhan fetch.");
+    
+    // Reset retry count on successful connection during periodic tasks
+    rtcData.wifiRetryCount = 0;
+    AppStateManager::save();
 
     // Get current date for fetching
     struct tm timeinfo;
@@ -524,14 +531,65 @@ void fetchPrayerTimesFromAladhan() {
                       Serial.printf("✅ Prayer times for %d/%d saved\n",
                                     nextMonth, nextYear);
                     }
-                    state = SLEEPING;
+                    // Check if weather also needs fetching (chain in same WiFi session)
+                    if (shouldFetchBasedOnInterval(rtcData.weatherLastUpdate,
+                                                   weatherUpdateInterval, "WEATHER")) {
+                      Serial.println("🌤️ Also fetching weather (chaining in same session)...");
+                      WeatherManager::getInstance().asyncFetchWeather(
+                          rtcData.latitude, rtcData.longitude, [](bool success) {
+                            if (success) {
+                              Serial.println("✅ Weather fetched successfully");
+                              g_renderState.initialized = false;
+                              state = RUNNING_MAIN_TASK; // Render screen with new weather
+                            } else {
+                              Serial.println("⚠️ Failed to fetch weather (will retry later)");
+                              state = SLEEPING;
+                            }
+                          });
+                    } else {
+                      state = SLEEPING;
+                    }
+                  });
+            } else {
+              // No next month needed, check if weather needs fetching
+              if (shouldFetchBasedOnInterval(rtcData.weatherLastUpdate,
+                                             weatherUpdateInterval, "WEATHER")) {
+                Serial.println("🌤️ Also fetching weather (chaining in same session)...");
+                WeatherManager::getInstance().asyncFetchWeather(
+                    rtcData.latitude, rtcData.longitude, [](bool success) {
+                      if (success) {
+                        Serial.println("✅ Weather fetched successfully");
+                        g_renderState.initialized = false;
+                        state = RUNNING_MAIN_TASK; // Render screen with new weather
+                      } else {
+                        Serial.println("⚠️ Failed to fetch weather (will retry later)");
+                        state = SLEEPING;
+                      }
+                    });
+              } else {
+                state = SLEEPING;
+              }
+            }
+          } else {
+            Serial.println("⚠️ Failed to fetch prayer times from Aladhan");
+            // Still check if weather needs fetching even if prayer times failed
+            if (shouldFetchBasedOnInterval(rtcData.weatherLastUpdate,
+                                           weatherUpdateInterval, "WEATHER")) {
+              Serial.println("🌤️ Fetching weather (prayer times fetch failed)...");
+              WeatherManager::getInstance().asyncFetchWeather(
+                  rtcData.latitude, rtcData.longitude, [](bool success) {
+                    if (success) {
+                      Serial.println("✅ Weather fetched successfully");
+                      g_renderState.initialized = false;
+                      state = RUNNING_MAIN_TASK; // Render screen with new weather
+                    } else {
+                      Serial.println("⚠️ Failed to fetch weather (will retry later)");
+                      state = SLEEPING;
+                    }
                   });
             } else {
               state = SLEEPING;
             }
-          } else {
-            Serial.println("⚠️ Failed to fetch prayer times from Aladhan");
-            state = SLEEPING;
           }
         });
   });
@@ -562,6 +620,10 @@ void handleBooting() {
   }
   Serial.println("✅ SPIFFS mounted successfully");
   AppStateManager::load();
+  
+  // Don't start tracking awake time on first boot - only after first sleep
+  // This ensures we don't count initialization time
+  Serial.println("⏰ Initial boot - awake time tracking will start after first sleep");
 
   // Restore configuration from SPIFFS if available
   if (SPIFFS.exists("/prayer_config.json")) {
@@ -696,7 +758,25 @@ void handleConnectingWifiWithSavedCredentials() {
     // Reset retry counter on successful connection
     rtcData.wifiRetryCount = 0;
     AppStateManager::save();
-    state = SYNCING_TIME;
+    
+    // Check if weather needs to be fetched on boot
+    if (shouldFetchBasedOnInterval(rtcData.weatherLastUpdate, 
+                                   weatherUpdateInterval, "WEATHER_ON_BOOT")) {
+      Serial.println("🌤️ Weather is stale, fetching on boot...");
+      WeatherManager::getInstance().asyncFetchWeather(
+          rtcData.latitude, rtcData.longitude, [](bool success) {
+            if (success) {
+              Serial.println("✅ Weather fetched on boot");
+              g_renderState.initialized = false; // Force full refresh
+            } else {
+              Serial.println("⚠️ Failed to fetch weather on boot (will retry later)");
+            }
+            state = SYNCING_TIME;
+          });
+    } else {
+      Serial.println("ℹ️ Weather is fresh, skipping fetch on boot");
+      state = SYNCING_TIME;
+    }
   });
   
   wifi.onWifiFailedToConnectCallback([]() {
@@ -747,6 +827,15 @@ void handleSyncingTime() {
   if (rtc.syncTimeFromNTPWithOffset(3, 10000, rtcData.timezoneOffsetSeconds)) {
     Serial.println("✅ Time synced successfully");
     // rtc.setTimeToSpecificHourAndMinute(20, 07, 5, 2); // for testing time
+    
+    // Disconnect WiFi after time sync to prevent beacon timeout
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("📡 Disconnecting WiFi after time sync");
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+      delay(100);
+    }
+    
     state = RUNNING_MAIN_TASK;
   } else {
     Serial.println("❌ Failed to sync time");
@@ -965,19 +1054,51 @@ void handleConnectingWifi() {
           writeJsonFile("/prayer_config.json", configJson);
           Serial.println("💾 Configuration saved to SPIFFS");
 
-          // Fetch initial weather
+          // Fetch initial weather AND prayer times while WiFi is connected
           Serial.println("🌤️ Fetching initial weather...");
           WeatherManager::getInstance().asyncFetchWeather(
               rtcData.latitude, rtcData.longitude, [](bool success) {
                 if (success) {
                   Serial.println("✅ Initial weather fetched successfully");
+                  g_renderState.initialized = false; // Force full refresh
                 } else {
                   Serial.println("⚠️ Failed to fetch initial weather (will retry later)");
                 }
                 
-                BLEManager::getInstance().stopAdvertising();
-                g_bleAdvertising = false; // Clear BLE advertising flag
-                state = SYNCING_TIME;
+                // Now fetch prayer times (WiFi still connected)
+                Serial.println("📡 Fetching initial prayer times...");
+                struct tm timeinfo;
+                if (!getLocalTime(&timeinfo)) {
+                  Serial.println("❌ Failed to get time for initial prayer times fetch");
+                  BLEManager::getInstance().stopAdvertising();
+                  g_bleAdvertising = false;
+                  state = SYNCING_TIME;
+                  return;
+                }
+
+                int currentMonth = timeinfo.tm_mon + 1;
+                int currentYear = timeinfo.tm_year + 1900;
+
+                Serial.printf("📅 Fetching prayer times for %d/%d\n", currentMonth, currentYear);
+
+                AladhanManager::getInstance().asyncFetchMonthlyPrayerTimes(
+                    rtcData.latitude, rtcData.longitude, rtcData.calculationMethod,
+                    currentMonth, currentYear,
+                    [currentMonth, currentYear](bool success, const char *path) {
+                      if (success) {
+                        Serial.printf("✅ Prayer times for %d/%d fetched successfully\n",
+                                      currentMonth, currentYear);
+                        rtcData.mosqueLastUpdateMillis = time(nullptr);
+                        AppStateManager::save();
+                      } else {
+                        Serial.println("⚠️ Failed to fetch initial prayer times (will retry later)");
+                      }
+
+                      // Done with initial data fetching, keep WiFi connected for time sync
+                      BLEManager::getInstance().stopAdvertising();
+                      g_bleAdvertising = false;
+                      state = SYNCING_TIME;
+                    });
               });
         });
   });
@@ -1011,6 +1132,13 @@ void handleConnectingWifi() {
 // }
 
 void handleSleeping() {
+  // Disconnect WiFi to save power and prevent beacon timeout disconnections
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("📡 Disconnecting WiFi before sleep to save power");
+    WiFi.disconnect(true);
+    delay(100);
+  }
+  
   // Compute seconds to next full minute
   struct tm timeinfo;
   if (getLocalTime(&timeinfo)) {
@@ -1028,6 +1156,25 @@ void handleSleeping() {
   Serial.printf("💤 Entering LIGHT SLEEP for %d seconds to align with next "
                 "full minute...\n",
                 sleepDuration);
+  
+  // Calculate awake time for this cycle (only if tracking has started)
+  if (rtcData.wakeStartMillis > 0) {
+    unsigned long awakeMillis = millis() - rtcData.wakeStartMillis;
+    unsigned long awakeSeconds = awakeMillis / 1000;
+    
+    // Add to cumulative total
+    rtcData.cumulativeAwakeSeconds += awakeSeconds;
+    
+    // Log for debugging
+    Serial.printf("⏱️ Awake for %lu seconds this cycle (Total: %lu seconds, Cycles: %lu)\n", 
+                  awakeSeconds, rtcData.cumulativeAwakeSeconds, rtcData.wakeCycleCount);
+  } else {
+    Serial.println("⏱️ First sleep - not counting initialization time");
+  }
+  
+  // Save to RTC memory
+  AppStateManager::save();
+  
   Serial.flush();
   delay(20); // give UART time to drain
 
@@ -1050,6 +1197,20 @@ void handleSleeping() {
   } else {
     Serial.printf("⏰ Woke from light sleep (cause=%d).\n", (int)cause);
   }
+
+  // Start tracking new wake cycle (or initialize tracking after first sleep)
+  if (rtcData.wakeStartMillis == 0) {
+    // First wake after initialization - start tracking now
+    rtcData.wakeCycleCount = 0;
+    rtcData.wakeStartMillis = millis();
+    Serial.println("⏰ Wake cycle tracking started (cycle #0)");
+  } else {
+    // Normal wake - increment cycle
+    rtcData.wakeCycleCount++;
+    rtcData.wakeStartMillis = millis();
+    Serial.printf("⏰ Wake cycle #%lu started\n", rtcData.wakeCycleCount);
+  }
+  AppStateManager::save();
 
   // Continue with main task next
   state = RUNNING_MAIN_TASK;
@@ -1097,26 +1258,33 @@ void fetchUserEvents() {
 
 void fetchWeather() {
   Serial.println("🌤️ Fetching weather...");
+  
   WiFiManager::getInstance().asyncConnectWithSavedCredentials();
 
   WiFiManager::getInstance().onWifiFailedToConnectCallback([]() {
-    Serial.println("❌ Failed to connect to Wi-Fi to fetch weather");
+    Serial.println("❌ Failed to connect to Wi-Fi to fetch weather (will retry in 1 hour)");
+    // Restore retry count to prevent device restart
+    rtcData.wifiRetryCount = 0;
+    AppStateManager::save();
     state = SLEEPING;
   });
 
   WiFiManager::getInstance().onWifiConnectedCallback([]() {
     Serial.println("✅ Connected to Wi-Fi for weather fetch.");
+    // Restore retry count after successful connection
+    rtcData.wifiRetryCount = 0;
+    AppStateManager::save();
     
     WeatherManager::getInstance().asyncFetchWeather(
         rtcData.latitude, rtcData.longitude, [](bool success) {
           if (success) {
             Serial.println("✅ Weather fetched successfully");
-            // Force full refresh on next render to show updated weather
             g_renderState.initialized = false;
+            state = RUNNING_MAIN_TASK; // Render screen with new weather immediately
           } else {
-            Serial.println("❌ Failed to fetch weather");
+            Serial.println("❌ Failed to fetch weather (will retry in 1 hour)");
+            state = SLEEPING;
           }
-          state = SLEEPING;
         });
   });
 }
@@ -1125,14 +1293,15 @@ void handlePeriodicTasks() {
   Serial.println("🔄 Running periodic tasks...");
   
   // Check if we need to fetch prayer times (every 6 hours)
+  // Note: Weather fetch is chained inside prayer times fetch to reuse WiFi session
   if (shouldFetchBasedOnInterval(rtcData.mosqueLastUpdateMillis,
                                  mosqueUpdateInterval, "PRAYER_TIMES")) {
-    fetchPrayerTimesFromAladhan();
+    fetchPrayerTimesFromAladhan(); // This also checks/fetches weather if needed
     return;
   }
   Serial.println("⚠️ Prayer times do not need to be fetched yet.");
 
-  // Check if we need to fetch weather (every 30 minutes)
+  // Check if we need to fetch weather separately (only if prayer times not fetched)
   if (shouldFetchBasedOnInterval(rtcData.weatherLastUpdate,
                                  weatherUpdateInterval, "WEATHER")) {
     fetchWeather();

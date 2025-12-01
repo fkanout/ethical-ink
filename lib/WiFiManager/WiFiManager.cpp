@@ -17,6 +17,9 @@ WiFiManager::WiFiManager() {
   // MUST enable modem sleep for WiFi/BLE coexistence
   // WIFI_PS_MIN_MODEM is required when BLE is active
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+  
+  // Boost WiFi TX power to maximum for better range/stability
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);  // Maximum power (was default ~17dBm)
 }
 
 WiFiManager &WiFiManager::getInstance() {

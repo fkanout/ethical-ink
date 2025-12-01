@@ -57,6 +57,11 @@ struct RTCData {
   float currentTemp = 0.0;        // Current temperature in Celsius
   char weatherDesc[20] = "";      // Weather description (e.g., "Clear", "Rain")
   time_t weatherLastUpdate = 0;   // Last weather update timestamp
+  
+  // Awake time tracking (temporary debug feature)
+  unsigned long cumulativeAwakeSeconds = 0;  // Total seconds awake across all cycles
+  unsigned long wakeStartMillis = 0;         // millis() when device woke up
+  unsigned long wakeCycleCount = 0;          // Number of wake cycles (runs)
 };
 
 extern RTCData rtcData;
