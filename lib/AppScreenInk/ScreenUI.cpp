@@ -59,9 +59,28 @@ void ScreenUI::fullRenderWithStatusBar(
   d_.setFullWindow();
   d_.firstPage();
   do {
-    d_.fillScreen(GxEPD_BLACK); // Black background
+    // STEP 1: Draw prayer boxes with WHITE backgrounds FIRST
+    const int16_t totalW = 5 * L.prayerBoxW + 4 * L.prayerSpacing;
+    const int16_t startX = (W_ - totalW) / 2;
+    
+    for (int i = 0; i < 5; i++) {
+      const int16_t x = startX + i * (L.prayerBoxW + L.prayerSpacing);
+      
+      // All boxes: WHITE background + border
+      d_.fillRect(x, L.rowY, L.prayerBoxW, L.prayerBoxH, GxEPD_WHITE);
+      d_.drawRect(x, L.rowY, L.prayerBoxW, L.prayerBoxH, GxEPD_WHITE);
+      
+      // If highlighted, add really thick BLACK underline that goes into the box
+      if (i == highlightIndex) {
+        int16_t underlineY = L.rowY + L.prayerBoxH - 7;  // Start 7px inside the box
+        d_.fillRect(x, underlineY, L.prayerBoxW, 20, GxEPD_BLACK);  // 20px thick underline (30% thicker)
+      }
+    }
+    
+    // STEP 2: Fill black background (only above prayer boxes)
+    d_.fillRect(0, 0, W_, L.rowY, GxEPD_BLACK);
 
-    // Draw status bar first with white text
+    // STEP 3: Draw status bar with white text
     d_.setTextColor(GxEPD_WHITE);
     StatusBar::drawStatusBar(d_, W_, H_, statusInfo, &Cairo_Bold12pt7b);
 
@@ -190,11 +209,7 @@ void ScreenUI::fullRenderWithStatusBar(
     d_.setCursor(textX_count, textY_count);
     d_.print(currentTimeStr);
 
-    // Prayer time boxes row with iqama times - custom drawing for reversed
-    // colors
-    const int16_t totalW = 5 * L.prayerBoxW + 4 * L.prayerSpacing;
-    const int16_t startX = (W_ - totalW) / 2;
-
+    // STEP 4: Draw TEXT inside prayer boxes (boxes already drawn in STEP 1)
     for (int i = 0; i < 5; i++) {
       const int16_t x = startX + i * (L.prayerBoxW + L.prayerSpacing);
 
@@ -216,75 +231,38 @@ void ScreenUI::fullRenderWithStatusBar(
       int16_t section1 = L.rowY + L.prayerBoxH / 3;
       int16_t section2 = L.rowY + (L.prayerBoxH * 2) / 3;
 
-      if (i == highlightIndex) {
-        // Highlighted: white background, black text
-        d_.fillRect(x, L.rowY, L.prayerBoxW, L.prayerBoxH, GxEPD_WHITE);
-        d_.drawRect(x, L.rowY, L.prayerBoxW, L.prayerBoxH, GxEPD_WHITE);
+      // Draw text - BLACK text on white background for all boxes
+      uint16_t textColor = GxEPD_BLACK;
+      
+      // Prayer Name
+      d_.setFont(&Cairo_Bold18pt7b);
+      int16_t x1, y1;
+      uint16_t w, h;
+      d_.getTextBounds(prayerNames[i], 0, 0, &x1, &y1, &w, &h);
+      int16_t nameX = x + (L.prayerBoxW - w) / 2 - x1;
+      int16_t nameY = section1 - 5;
+      d_.setTextColor(textColor);
+      d_.setCursor(nameX, nameY);
+      d_.print(prayerNames[i]);
 
-        // Prayer Name
-        d_.setFont(&Cairo_Bold18pt7b);
-        int16_t x1, y1;
-        uint16_t w, h;
-        d_.getTextBounds(prayerNames[i], 0, 0, &x1, &y1, &w, &h);
-        int16_t nameX = x + (L.prayerBoxW - w) / 2 - x1;
-        int16_t nameY = section1 - 5;
-        d_.setTextColor(GxEPD_BLACK);
-        d_.setCursor(nameX, nameY);
-        d_.print(prayerNames[i]);
+      // Prayer Time
+      d_.setFont(&Cairo_Bold24pt7b);
+      d_.getTextBounds(prayerTimes[i], 0, 0, &x1, &y1, &w, &h);
+      int16_t timeX = x + (L.prayerBoxW - w) / 2 - x1;
+      int16_t timeY = section2 - 10;
+      d_.setTextColor(textColor);
+      d_.setCursor(timeX, timeY);
+      d_.print(prayerTimes[i]);
 
-        // Prayer Time
+      // Iqama Delay (only show if delay > 0)
+      if (delay > 0) {
         d_.setFont(&Cairo_Bold24pt7b);
-        d_.getTextBounds(prayerTimes[i], 0, 0, &x1, &y1, &w, &h);
-        int16_t timeX = x + (L.prayerBoxW - w) / 2 - x1;
-        int16_t timeY = section2 - 10;
-        d_.setTextColor(GxEPD_BLACK);
-        d_.setCursor(timeX, timeY);
-        d_.print(prayerTimes[i]);
-
-        // Iqama Delay (only show if delay > 0)
-        if (delay > 0) {
-          d_.setFont(&Cairo_Bold24pt7b);
-          d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
-          int16_t iqamaX = x + (L.prayerBoxW - w) / 2 - x1;
-          int16_t iqamaY = L.rowY + L.prayerBoxH - 10;
-          d_.setTextColor(GxEPD_BLACK);
-          d_.setCursor(iqamaX, iqamaY);
-          d_.print(iqamaDelayStr);
-        }
-      } else {
-        // Not highlighted: white border, white text
-        d_.drawRect(x, L.rowY, L.prayerBoxW, L.prayerBoxH, GxEPD_WHITE);
-
-        // Prayer Name
-        d_.setFont(&Cairo_Bold18pt7b);
-        int16_t x1, y1;
-        uint16_t w, h;
-        d_.getTextBounds(prayerNames[i], 0, 0, &x1, &y1, &w, &h);
-        int16_t nameX = x + (L.prayerBoxW - w) / 2 - x1;
-        int16_t nameY = section1 - 5;
-        d_.setTextColor(GxEPD_WHITE);
-        d_.setCursor(nameX, nameY);
-        d_.print(prayerNames[i]);
-
-        // Prayer Time
-        d_.setFont(&Cairo_Bold24pt7b);
-        d_.getTextBounds(prayerTimes[i], 0, 0, &x1, &y1, &w, &h);
-        int16_t timeX = x + (L.prayerBoxW - w) / 2 - x1;
-        int16_t timeY = section2 - 10;
-        d_.setTextColor(GxEPD_WHITE);
-        d_.setCursor(timeX, timeY);
-        d_.print(prayerTimes[i]);
-
-        // Iqama Delay (only show if delay > 0)
-        if (delay > 0) {
-          d_.setFont(&Cairo_Bold24pt7b);
-          d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
-          int16_t iqamaX = x + (L.prayerBoxW - w) / 2 - x1;
-          int16_t iqamaY = L.rowY + L.prayerBoxH - 10;
-          d_.setTextColor(GxEPD_WHITE);
-          d_.setCursor(iqamaX, iqamaY);
-          d_.print(iqamaDelayStr);
-        }
+        d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
+        int16_t iqamaX = x + (L.prayerBoxW - w) / 2 - x1;
+        int16_t iqamaY = L.rowY + L.prayerBoxH - 10;
+        d_.setTextColor(textColor);
+        d_.setCursor(iqamaX, iqamaY);
+        d_.print(iqamaDelayStr);
       }
     }
   } while (d_.nextPage());
@@ -432,8 +410,12 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
     int16_t section3 = startY + boxH;
 
     if (i == highlightIndex) {
-      d_.fillRect(x, startY, boxW, boxH, GxEPD_WHITE);
+      // Highlighted: normal box with thick underline indicator
       d_.drawRect(x, startY, boxW, boxH, GxEPD_WHITE);
+      
+      // Thick horizontal underline below the box as indicator
+      int16_t underlineY = startY + boxH + 3;
+      d_.fillRect(x, underlineY, boxW, 5, GxEPD_WHITE);
 
       // Prayer Name (first third)
       d_.setFont(&Cairo_Bold18pt7b);
@@ -442,7 +424,7 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
       d_.getTextBounds(names[i], 0, 0, &x1, &y1, &w, &h);
       int16_t nameX = x + (boxW - w) / 2 - x1;
       int16_t nameY = section1 - 5;
-      d_.setTextColor(GxEPD_BLACK); // Black text on white background
+      d_.setTextColor(GxEPD_WHITE); // White text on black background
       d_.setCursor(nameX, nameY);
       d_.print(names[i]);
 
@@ -451,7 +433,7 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
       d_.getTextBounds(times[i], 0, 0, &x1, &y1, &w, &h);
       int16_t timeX = x + (boxW - w) / 2 - x1;
       int16_t timeY = section2 - 5;
-      d_.setTextColor(GxEPD_BLACK); // Black text on white background
+      d_.setTextColor(GxEPD_WHITE); // White text on black background
       d_.setCursor(timeX, timeY);
       d_.print(times[i]);
 
@@ -461,12 +443,13 @@ void ScreenUI::drawPrayerTimeBoxes(const char *names[], const char *times[],
         d_.getTextBounds(iqamaDelayStr, 0, 0, &x1, &y1, &w, &h);
         int16_t iqamaX = x + (boxW - w) / 2 - x1;
         int16_t iqamaY = section3 - 15;
-        d_.setTextColor(GxEPD_BLACK); // Black text on white background
+        d_.setTextColor(GxEPD_WHITE); // White text on black background
         d_.setCursor(iqamaX, iqamaY);
         d_.print(iqamaDelayStr);
       }
     } else {
-      d_.drawRect(x, startY, boxW, boxH, GxEPD_WHITE); // White border
+      // Not highlighted: normal box with border
+      d_.drawRect(x, startY, boxW, boxH, GxEPD_WHITE);
 
       // Prayer Name (first third)
       d_.setFont(&Cairo_Bold18pt7b);
