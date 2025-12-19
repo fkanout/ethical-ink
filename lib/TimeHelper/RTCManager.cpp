@@ -101,13 +101,13 @@ bool RTCManager::syncTimeFromNTPWithOffset(int maxRetries, uint32_t timeoutMs, i
     attempts++;
     if (attempts % 10 == 0) {
       Serial.printf("⏳ Waiting... (%d/%d)\n", attempts / 10, maxRetries);
+      }
     }
-  }
 
   if (attempts >= maxAttempts) {
     Serial.println("❌ Failed to sync time from NTP (timeout)");
     return false;
-  }
+    }
 
   Serial.println("✅ NTP time sync complete");
   timeSynced = true;
@@ -115,6 +115,6 @@ bool RTCManager::syncTimeFromNTPWithOffset(int maxRetries, uint32_t timeoutMs, i
   Serial.printf("⏰ Synced Time: %04d-%02d-%02d %02d:%02d:%02d\n",
                 timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-  
-  return true;
+
+      return true;
 }

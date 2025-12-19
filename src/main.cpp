@@ -56,7 +56,7 @@ const char *PRAYER_NAMES[] = {"Fajr", "Sunrise", "Dhuhr",
 
 const unsigned long mosqueUpdateInterval = 6UL * 60UL * 60UL; // 6 hours
 const unsigned long userEventsUpdateInterval = 10UL * 60UL;   // 10 minutes
-const unsigned long weatherUpdateInterval = 30UL * 60UL;      // 30 minutes
+const unsigned long weatherUpdateInterval = 60UL * 60UL;      // 1 hour
 bool isFetching = false;
 
 AppState state = BOOTING;
@@ -164,6 +164,11 @@ bool isLaterThan(int hour, int minute, const String &timeStr) {
 void executeMainTask() {
   setCpuFrequencyMhz(240);
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
+  
+  // Ensure timezone is configured before any time operations
+  // This is the single "before all" hook for rendering
+  configTime(rtcData.timezoneOffsetSeconds, 0, nullptr, nullptr);
+  
   unsigned long startTime = millis();
 
   // Use city name from RTC memory instead of mosque name
@@ -549,7 +554,7 @@ void fetchPrayerTimesFromAladhan() {
                             if (success) {
                               Serial.println("✅ Weather fetched successfully");
                               g_renderState.initialized = false;
-                              state = RUNNING_MAIN_TASK; // Render screen with new weather
+                              state = RUNNING_MAIN_TASK;
                             } else {
                               Serial.println("⚠️ Failed to fetch weather (will retry later)");
                               state = SLEEPING;
@@ -569,7 +574,7 @@ void fetchPrayerTimesFromAladhan() {
                       if (success) {
                         Serial.println("✅ Weather fetched successfully");
                         g_renderState.initialized = false;
-                        state = RUNNING_MAIN_TASK; // Render screen with new weather
+                        state = RUNNING_MAIN_TASK;
                       } else {
                         Serial.println("⚠️ Failed to fetch weather (will retry later)");
                         state = SLEEPING;
@@ -590,7 +595,7 @@ void fetchPrayerTimesFromAladhan() {
                     if (success) {
                       Serial.println("✅ Weather fetched successfully");
                       g_renderState.initialized = false;
-                      state = RUNNING_MAIN_TASK; // Render screen with new weather
+                      state = RUNNING_MAIN_TASK;
                     } else {
                       Serial.println("⚠️ Failed to fetch weather (will retry later)");
                       state = SLEEPING;
@@ -1299,7 +1304,7 @@ void fetchWeather() {
           if (success) {
             Serial.println("✅ Weather fetched successfully");
             g_renderState.initialized = false;
-            state = RUNNING_MAIN_TASK; // Render screen with new weather immediately
+            state = RUNNING_MAIN_TASK;
           } else {
             Serial.println("❌ Failed to fetch weather (will retry in 1 hour)");
             state = SLEEPING;

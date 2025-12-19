@@ -131,7 +131,7 @@ void WiFiManager::connectTask(void *parameter) {
     // Properly disconnect and wait
     WiFi.disconnect(true);  // true = turn off WiFi
     vTaskDelay(500 / portTICK_PERIOD_MS);  // Wait longer for complete disconnect
-    
+
     // Reconnect
     WiFi.mode(WIFI_STA);  // Ensure station mode
     WiFi.begin(params->ssid, params->password);
