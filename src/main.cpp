@@ -46,6 +46,9 @@ struct RenderState {
 // RTC slow memory state (optional)
 RTC_DATA_ATTR RenderState g_renderState;
 
+// Deep sleep tracking (needed since millis() resets on deep sleep wake)
+RTC_DATA_ATTR unsigned long g_sleepStartMillis = 0;
+
 CalendarManager calendarManager;
 unsigned int sleepDuration = 60; // in seconds, default fallback
 const char *PRAYER_NAMES[] = {"Fajr", "Sunrise", "Dhuhr",
@@ -159,7 +162,7 @@ bool isLaterThan(int hour, int minute, const String &timeStr) {
 }
 
 void executeMainTask() {
-  setCpuFrequencyMhz(80);
+  setCpuFrequencyMhz(240);
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
   unsigned long startTime = millis();
 
@@ -290,8 +293,14 @@ void executeMainTask() {
   int highlightIndex = ScreenUI::getNextPrayerIndex(
       prayerTimesRow, timeinfo.tm_hour, timeinfo.tm_min);
 
+  // Calculate current awake time to include in display
+  unsigned long currentAwakeSeconds = rtcData.cumulativeAwakeSeconds;
+  if (rtcData.wakeStartMillis > 0) {
+    currentAwakeSeconds += (millis() - rtcData.wakeStartMillis) / 1000;
+  }
+
   // Get status information (with awake time counter and cycles)
-  StatusInfo statusInfo = StatusBar::getStatusInfo(g_bleAdvertising, rtcData.cumulativeAwakeSeconds, rtcData.wakeCycleCount);
+  StatusInfo statusInfo = StatusBar::getStatusInfo(g_bleAdvertising, currentAwakeSeconds, rtcData.wakeCycleCount);
 
   // Use city name instead of mosque name
   String displayName = displayLocationName;
@@ -599,6 +608,47 @@ void setup() {
   Serial.begin(115200);
   delay(300);
 
+  // Check wake cause FIRST - before any other initialization
+  esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+
+  if (cause == ESP_SLEEP_WAKEUP_TIMER) {
+    // Woke from deep sleep timer - fast path
+    Serial.println("\n⏰ Woke from DEEP SLEEP by timer");
+    
+    // Mount SPIFFS (needed for prayer times data)
+    if (!SPIFFS.begin(false)) {
+      Serial.println("❌ SPIFFS mount failed on wake");
+    }
+    
+    // Load RTC data (validates magic)
+    AppStateManager::load();
+    
+    // Re-apply timezone offset (lost during deep sleep since it's stored in RAM)
+    // RTC time is preserved, but timezone config needs to be re-applied
+    configTime(rtcData.timezoneOffsetSeconds, 0, nullptr, nullptr);
+    Serial.printf("🌍 Timezone restored: UTC%+d\n", rtcData.timezoneOffsetSeconds / 3600);
+    
+    // Update awake tracking
+    rtcData.wakeCycleCount++;
+    rtcData.wakeStartMillis = millis();
+    Serial.printf("⏰ Wake cycle #%lu started\n", rtcData.wakeCycleCount);
+    
+    // Initialize display without initial full update (skip full refresh on wake)
+    display.init(115200, false);  // false = no initial full update
+    display.setRotation(0);
+    
+    // Skip full boot, jump to main task
+    state = RUNNING_MAIN_TASK;
+    return;
+  } else if (cause == ESP_SLEEP_WAKEUP_EXT0) {
+    Serial.println("\n🔘 Woke from DEEP SLEEP by BOOT button!");
+    Serial.println("💡 Continue normal boot for factory reset handling");
+    // Fall through to normal boot
+  } else if (cause != ESP_SLEEP_WAKEUP_UNDEFINED) {
+    Serial.printf("\n⏰ Woke from deep sleep (cause=%d)\n", (int)cause);
+  }
+
+  // Normal boot path (cold boot or button wake)
   // Set up factory reset button early
   pinMode(FACTORY_RESET_BUTTON, INPUT_PULLUP);
   Serial.printf("\n\n🔧 Factory reset button configured on GPIO%d\n",
@@ -1132,13 +1182,14 @@ void handleConnectingWifi() {
 // }
 
 void handleSleeping() {
-  // Disconnect WiFi to save power and prevent beacon timeout disconnections
+  // Disconnect WiFi to save power
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("📡 Disconnecting WiFi before sleep to save power");
+    Serial.println("📡 Disconnecting WiFi before sleep");
     WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
     delay(100);
   }
-  
+
   // Compute seconds to next full minute
   struct tm timeinfo;
   if (getLocalTime(&timeinfo)) {
@@ -1147,73 +1198,41 @@ void handleSleeping() {
     if (sleepDuration == 60)
       sleepDuration = 0; // edge case
   } else {
-    Serial.println(
-        "⚠️ Failed to get time for sleep alignment. Using 60s fallback.");
+    Serial.println("⚠️ Failed to get time for sleep alignment. Using 60s fallback.");
     sleepDuration = 60;
   }
 
-  // Announce BEFORE sleeping
-  Serial.printf("💤 Entering LIGHT SLEEP for %d seconds to align with next "
-                "full minute...\n",
-                sleepDuration);
-  
   // Calculate awake time for this cycle (only if tracking has started)
   if (rtcData.wakeStartMillis > 0) {
     unsigned long awakeMillis = millis() - rtcData.wakeStartMillis;
     unsigned long awakeSeconds = awakeMillis / 1000;
-    
-    // Add to cumulative total
     rtcData.cumulativeAwakeSeconds += awakeSeconds;
-    
-    // Log for debugging
-    Serial.printf("⏱️ Awake for %lu seconds this cycle (Total: %lu seconds, Cycles: %lu)\n", 
+    Serial.printf("⏱️ Awake for %lu seconds this cycle (Total: %lu seconds, Cycles: %lu)\n",
                   awakeSeconds, rtcData.cumulativeAwakeSeconds, rtcData.wakeCycleCount);
+    
+    // Update status bar with accurate awake time before sleep
+    GxEPD2Adapter<decltype(display)> epdAdapter(display);
+    ScreenUI ui(epdAdapter, 800, 480);
+    StatusInfo statusInfo = StatusBar::getStatusInfo(g_bleAdvertising, rtcData.cumulativeAwakeSeconds, rtcData.wakeCycleCount);
+    ui.redrawStatusBarRegion(statusInfo);
   } else {
     Serial.println("⏱️ First sleep - not counting initialization time");
   }
-  
-  // Save to RTC memory
+
+  // Save state to RTC memory before deep sleep
   AppStateManager::save();
-  
+
+  Serial.printf("💤 Entering DEEP SLEEP for %d seconds...\n", sleepDuration);
   Serial.flush();
-  delay(20); // give UART time to drain
+  delay(20);
 
-  // Enable wake-up from BOOT button (GPIO0) in addition to timer
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)FACTORY_RESET_BUTTON,
-                               0); // Wake on LOW (button press)
-
-  // Sleep & wake
+  // Configure wake sources
   esp_sleep_enable_timer_wakeup((uint64_t)sleepDuration * 1000000ULL);
-  esp_light_sleep_start();
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)FACTORY_RESET_BUTTON, 0);
 
-  // After wake
-  esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-  if (cause == ESP_SLEEP_WAKEUP_TIMER) {
-    Serial.println("⏰ Woke from light sleep by timer.");
-  } else if (cause == ESP_SLEEP_WAKEUP_EXT0) {
-    Serial.println("🔘 Woke from light sleep by BOOT button!");
-    Serial.println("💡 If you want factory reset: Hold BOOT, press RST, keep "
-                   "holding 10 sec");
-  } else {
-    Serial.printf("⏰ Woke from light sleep (cause=%d).\n", (int)cause);
-  }
-
-  // Start tracking new wake cycle (or initialize tracking after first sleep)
-  if (rtcData.wakeStartMillis == 0) {
-    // First wake after initialization - start tracking now
-    rtcData.wakeCycleCount = 0;
-    rtcData.wakeStartMillis = millis();
-    Serial.println("⏰ Wake cycle tracking started (cycle #0)");
-  } else {
-    // Normal wake - increment cycle
-    rtcData.wakeCycleCount++;
-    rtcData.wakeStartMillis = millis();
-    Serial.printf("⏰ Wake cycle #%lu started\n", rtcData.wakeCycleCount);
-  }
-  AppStateManager::save();
-
-  // Continue with main task next
-  state = RUNNING_MAIN_TASK;
+  // DEEP SLEEP - device restarts on wake (runs setup() again)
+  esp_deep_sleep_start();
+  // Code below never executes
 }
 
 void handleMainTaskState() {

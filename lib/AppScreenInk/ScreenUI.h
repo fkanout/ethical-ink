@@ -65,6 +65,8 @@ public:
   static int getNextPrayerIndex(const char *times[5], int currentHour,
                                 int currentMin);
 
+  void redrawStatusBarRegion(const StatusInfo &statusInfo);
+
 private:
   IEpaper &d_;
   int16_t W_, H_;
@@ -88,6 +90,5 @@ private:
                              int highlightIndex);
   void redrawHeaderRegion(const ScreenLayout &L, const char *mosqueName,
                           const char *headerLabel);
-  void redrawStatusBarRegion(const StatusInfo &statusInfo);
   void drawWeatherIcon(const char *weatherDesc, int16_t x, int16_t y, int16_t size);
 };
