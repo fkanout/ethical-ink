@@ -261,8 +261,7 @@ void executeMainTask() {
     IQAMA_Isha = todayIqama[4];
   }
 
-  Countdown countdown =
-      calculateCountdownToNextPrayer(nextPrayerInfo.time, timeinfo);
+  Countdown countdown = calculateCountdownToNextPrayer(nextPrayerInfo.time, timeinfo);
   char countdownStr[16];
   sprintf(countdownStr, "%02d:%02d", countdown.hours, countdown.minutes);
 
