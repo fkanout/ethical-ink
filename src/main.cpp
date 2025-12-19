@@ -162,7 +162,7 @@ bool isLaterThan(int hour, int minute, const String &timeStr) {
 }
 
 void executeMainTask() {
-  setCpuFrequencyMhz(240);
+  setCpuFrequencyMhz(80);  // TEST: Lower frequency to save power
   Serial.printf("⚙️ CPU now running at: %d MHz\n", getCpuFrequencyMhz());
   
   // Ensure timezone is configured before any time operations
